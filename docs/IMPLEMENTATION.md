@@ -331,16 +331,39 @@ MCP 还会对截图背景做 `500 ms` 的缩放/平移动画，并在部分设�
 启动 Activity 已从旧的原生 `LinearLayout` 页面迁移为 Miuix Compose：
 
 - `MiuixTheme(ThemeController(...))` 使用显式 `ColorSchemeMode.Light` 或 `Dark`；
-- 首页顶部状态卡直接对齐 InstallerX 的 Miuix 实现：成功态使用浅绿 `#DFFAE4`（深色为
-  `#1A3825`），失败态使用 `#FAEEEE`（深色为 `#381A1A`）。状态图案分别使用 Material
-  `CheckCircleOutline` 和 `ErrorOutline`，尺寸为 `170 dp`，在卡片右下区域按 `(50 dp, 38 dp)`
-  偏移并裁切，颜色为 `#36D167` / `#D13636`，不是右侧居中的普通操作图标。卡片内容同样采用
-  InstallerX 的完整三段结构：`20 sp` 标题、`14 sp` 摘要、`36 dp` 间隔和 `14 sp` 状态来源；
-  标题使用 `onSurface`，两行次级文字使用 `onSurface` 的 `0.8` alpha。传送门模式状态严格按“模块
-  未获取 Root → 当前版本未注入到传送门 → 传送门未获取 Root 权限 → 已激活”判断；模块 Root 通过限时
-  `su -c id -u` 检测，传送门 Root 由已注入进程在后台执行同一探测后受限上报，注入状态来自版本化 Provider 握手。
-- 主页面、可见性页、排序页和无障碍应用黑名单页都使用 `Scaffold` + `MiuixScrollBehavior` + 可折叠
-  `TopAppBar`；二级页使用 Miuix `miuix-navigation3-ui` 的 `NavDisplay`、`NavKey` 和装饰后
+- 主界面是一个外壳 `Scaffold`：底部 Miuix `NavigationBar` 有“主页/设置/关于”三个页签，内容区是
+  `HorizontalPager`，三页可以左右滑动切换。点击页签用 `animateScrollToPage` 平滑滚动，高亮在
+  点击瞬间就切换（`MainTabState`），不等动画结束。不在“主页”页签时系统返回键先回到主页；已在
+  主页或已进入二级页时返回键仍按原行为结束 Activity 或出栈；
+- 底栏和每一页的顶栏都用 miuix `textureBlur` 做背景模糊：`blurRadius = 25f`，混合色为 `surface`
+  的 `0.8` alpha（`DragShareBlurredTopBar`）。外壳持有一个 `LayerBackdrop` 供底栏采样 pager
+  内容，每一页再各自持有一个供自己的顶栏采样该页列表；同一个 backdrop 不能既被某个树采样又被
+  它自己消费，否则 HyperOS 上会出现 RenderThread 递归。`isRuntimeShaderSupported()` 为 false 时
+  两处都退回不透明 `surface` 并恢复底栏分割线；
+- 页内 `Scaffold` 只消费水平方向的 system bars 与 display cutout（`pageWindowInsets()`），底部
+  留白由外壳 `innerPadding` 经列表末尾的 `Spacer` 补齐；页内 `Scaffold` 传 `popupHost = { }`，
+  下拉选项和对话框统一渲染在外壳 Scaffold 上；
+- 主页状态卡沿用 InstallerX 的 Miuix 视觉：已激活用浅绿 `#DFFAE4`（深色 `#1A3825`），部分激活用
+  `#FAF3DF`（深色 `#3A3018`），未激活用 `#FAEEEE`（深色 `#381A1A`），检测中用 `surfaceContainer`。
+  状态图案使用 Material `CheckCircleOutline` 和 `ErrorOutline`，尺寸 `170 dp`，在卡片右下区域按
+  `(50 dp, 38 dp)` 偏移并裁切，颜色为 `#36D167` / `#D1A336` / `#D13636`。卡片只有两段文字：
+  `20 sp` 标题（正在检测 / 未激活 / 部分激活 / 已激活）、`36 dp` 间隔和 `14 sp` 状态来源
+  （`ROOT`、`ROOT · LSPosed`、`ROOT · 无障碍`），不再显示提示摘要；无障碍模式下点击卡片仍直接
+  打开系统无障碍授权设置页，传送门模式下点击卡片是手动重新检测；
+- 状态卡下面是“检测项”卡片，按来源顺序逐项给出结论，排版沿用 KernelSU 首页信息卡：标题为
+  `headline1` Medium，取值为 `body2`，行间距 `24 dp`，最后一行不留底距，失败项取值用 `#D13636`。
+  传送门模式依次是 Root 权限、传送门 Root 权限、LSPosed 注入、传送门版本、内容获取方式、模块
+  版本；无障碍模式依次是 Root 权限、无障碍服务、无障碍连接、Root 输入、内容获取方式、模块版本。
+  检测尚未完成的项显示“检测中”。“LSPosed 注入”取值为已注入当前版本、传送门未运行或未注入，其中
+  “传送门未运行”是握手超时后由 root `pidof` 确认传送门根本没有进程时的结论。传送门版本通过
+  `QUERY_ALL_PACKAGES` 读取 `com.miui.contentextension` 的 `versionName (longVersionCode)`，
+  未安装时显示“未安装”；
+- 检测状态由进程级 `ActivationMonitor` 持有（见 7.1），切换页签或返回主页不会重新探测；
+- 判断逻辑本身不变：模块 Root 通过限时 `su -c id -u` 检测，传送门 Root 由已注入进程在后台执行
+  同一探测后受限上报，注入状态来自版本化 Provider 握手；
+- 关于页整体成为“关于”页签，不再有返回图标；开放源代码许可仍是二级页；
+- 可见性页、排序页和无障碍应用黑名单页仍是二级页，都使用 `Scaffold` + `MiuixScrollBehavior` +
+  可折叠 `TopAppBar`；二级页使用 Miuix `miuix-navigation3-ui` 的 `NavDisplay`、`NavKey` 和装饰后
   `NavEntry`，沿用其默认 500 ms 前进、返回和预测返回动画，并保留返回导航图标；
 - 页面入口使用 Miuix `ArrowPreference`；可见性应用组使用 Miuix `Card` + 三态 `Checkbox`，
   Activity 子项使用二态 `Checkbox`；
@@ -381,8 +404,9 @@ MCP 还会对截图背景做 `500 ms` 的缩放/平移动画，并在部分设�
 
 可见性页和排序页进入后先提交 TopAppBar 与 Miuix `CircularProgressIndicator` 首帧，再在
 `Dispatchers.IO` 查询 PackageManager 分享目标；查询完成后才组合列表，避免导航动画被同步
-查询阻塞。首页的 `LazyListState` 与 `TopAppBarState` 提升到导航容器外层，因此进入任一子页
-再返回时会恢复原滚动位置和标题折叠状态。
+查询阻塞。`HorizontalPager` 的 `PagerState`、三个页签各自的 `LazyListState` 以及主页和设置页的
+`TopAppBarState` 都提升到导航容器外层，因此进入任一子页再返回时会恢复原页签、滚动位置和标题
+折叠状态。
 
 `OverlayDropdownPreference` 必须位于 `Scaffold` 内，否则 Miuix 的弹出选项不会渲染。滑块
 只在 `onValueChangeFinished` 时写入配置，避免拖动时频繁写磁盘。Activity 使用
@@ -395,24 +419,48 @@ TopAppBar 统一消费 system bars、display cutout 与底部导航栏 insets，
 `startActivity()`。无障碍模式使用模块自身的 Miuix 子页面：通过 `QUERY_ALL_PACKAGES` 查询已安装应用，
 支持名称或包名搜索并显示归一化图标。当前默认桌面和 `Settings.Secure.DEFAULT_INPUT_METHOD` 指向的
 当前输入法始终显示为已加入、禁用开关的内置项；其余应用的开关保存到模块 UID 的设置中。无障碍
-模式下首页状态卡也可直接打开系统无障碍授权设置页。
+模式下主页状态卡也可直接打开系统无障碍授权设置页。
 
 ### 7.1 激活状态握手
 
-传送门服务加载 Hook 后立即调用 `report_injected`，extras 携带 Hook 代码编译时的
+传送门任一进程的 `Instrumentation.callApplicationOnCreate` 返回后，Hook 就在名为
+`DragShare-PortalActivation` 的后台线程调用 `report_injected`，extras 携带 Hook 代码编译时的
 `BuildConfig.VERSION_CODE`；随后在后台以传送门 UID 执行 `su -c id -u`，通过同一受限调用上报
-`portal_root_granted`。Provider 只接受传送门或模块自身 UID，并且只有上报版本等于当前 APK
-版本时才写入 `module_activation`。首页只有“已注入 + 传送门 Root 探测通过”才显示已激活；任一
-检查未通过时，摘要会补充“如果传送门未启动，该提示为正常现象”。APK 更新但传送门仍保留旧进程时，
-旧版本值不会匹配，首页会保持“未注入到传送门”，直到传送门以新模块代码重启。普通 `get_settings`
-不更新此标记。
+`portal_root_granted`。上报不再依赖 `TextContentExtensionService` 的生命周期，因此传送门只要有
+进程活着（哪怕没有在前台使用过内容扩展）就会被识别为已注入。上报只做一次，成功即置
+`activationReported`。Provider 只接受传送门或模块自身 UID，并且只有上报版本等于当前 APK
+版本时才写入 `module_activation`。主页只有“已注入 + 传送门 Root 探测通过”才显示已激活；有 Root
+但任一检查未通过时状态卡显示“部分激活”，具体是哪一项未通过由“检测项”卡片给出。APK 更新但传送门
+仍保留旧进程时，旧版本值不会匹配，“LSPosed 注入”会保持“未注入”，直到传送门以新模块代码重启。
+普通 `get_settings` 不更新此标记。
 
-首页检测到 Root 但当前版本尚未握手时，会用 root 执行 `am startservice`，目标仅为
-`com.miui.contentextension/.services.TextContentExtensionService`。新服务会在 `onCreate` 上报，
-已运行服务则在新增的 `onStartCommand(Intent, int, int)` Hook 中再次上报；设置页最多轮询约
-`4.5 s`，以等待传送门的 Root 探测回传后更新状态。因此当前 Hook 已加载时，不需要先手动触发一次传送门。该流程不会调用
-`force-stop`，也不会启动或停止 `com.miui.contentcatcher`。若传送门进程仍运行着启用模块前或
-旧 APK 的代码，启动命令不会伪造激活状态，仍需让 LSPosed 重新启动传送门作用域。
+主页检测到 Root 但当前版本尚未握手时，会用 root 执行 `am startservice`，目标仅为
+`com.miui.contentextension/.services.TextContentExtensionService`（若服务已在运行，其
+`onStartCommand` Hook 也会再次上报）。等待上报不再轮询，而是注册
+`ModuleActivation.activationPreferences()` 的 `OnSharedPreferenceChangeListener`：注入报告最多等
+`12 s`（冷启动传送门需要几秒），确认注入后再最多等 `6 s` 拿传送门 Root 探测的第二份报告。若注入
+报告始终没来，就用 root `pidof com.miui.contentextension` 判断传送门是否根本没起来，从而把
+“传送门未运行”和“未注入”分开显示。`su` 的超时也按用途区分：首次授权可能要等 root 管理器弹窗，
+`id -u` 给 `12 s`，其余命令 `6 s`。该流程不会调用 `force-stop`，也不会启动或停止
+`com.miui.contentcatcher`。若传送门进程仍运行着启用模块前或旧 APK 的代码，启动命令不会伪造激活
+状态，仍需让 LSPosed 重新启动传送门作用域。
+
+检测本身由进程级单例 `ActivationMonitor` 持有（参考 InstallerX `DeviceCapabilityProviderImpl` 和
+XiaomiHelper `AppEnvironmentManager` 的“能力状态归单例、UI 只订阅”写法），结果是一个
+`StateFlow<ActivationSnapshot>`，不随可组合项销毁：
+
+- 首次组合按当前内容获取方式检测一次，同一模式不会重复触发，所以切页签、左右滑动或从二级页
+  返回主页都只是订阅已有结果；
+- 只有 Activity 真正的 `ON_START` 才重新检测。`LifecycleRegistry.addObserver()` 会对已 STARTED
+  的宿主同步重放一次 `ON_START`，这一次是重新组合而非用户回到应用，必须被丢弃；
+- 内容获取方式切换会立刻按新模式重新检测；
+- 传送门模式下点击状态卡片就是手动重新检测（会再次尝试拉起传送门）；
+- 重新检测期间保留上一次的卡片内容，只有首次检测或模式切换才显示“正在检测”。
+
+XiaomiHelper 那套 libxposed 远程服务（`io.github.libxposed:service`、`XposedServiceHelper`）在此
+不可用：那个 binder 只发给以新 API 编译的模块，本工程是 Xposed API 82，永远收不到，所以注入状态
+只能继续靠自己的 Provider 握手。InstallerX 也没有真正检测注入，它的 `isLSPosedActive` 是用户自己
+在设置里勾的开关。
 
 ### 7.2 配置跨进程传递
 
@@ -754,7 +802,8 @@ APK 输出：
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-当前 75 个单元测试覆盖：当前版本注入握手与限定服务启动命令、传送门原浮窗在模块预览挂窗前的
+当前 80 个单元测试覆盖：当前版本注入握手与限定服务启动命令、检测项的来源顺序/“检测中”占位/
+传送门未运行与未注入的区分/状态卡来源文案、传送门原浮窗在模块预览挂窗前的
 抑制、底部触发边界、左右滚动方向、边缘深度速度渐变、
 预览位置夹取、流光进度与项目缩放、近手方向映射、环形菜单左右触发/贴边半圆/自然项目顺序、
 新增外观设置和现代原生局部模糊参数的默认值/范围裁剪、原生 Window 局部模糊的圆角背景/降级判定、现代预览按文字与图片尺寸自适应并限制为屏宽三分之一、独立 Compose 悬浮窗的 ViewTree owner 传递、原始坐标与旋转映射、

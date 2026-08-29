@@ -9,7 +9,7 @@
 ## 工程基线
 
 - 工程类型：Android LSPosed 模块，Java/Kotlin 17，minSdk 33，targetSdk 34，compileSdk 37。
-- 当前版本：`1.7.47`，`versionCode 71`。
+- 当前版本：`1.7.50`，`versionCode 74`。
 - 已验证宿主：传送门 `4.2.1`，包名 `com.miui.contentextension`。
 - LSPosed API：82，入口为 `com.leaf.hyperdragshare.codex.MainHook`。
 - 可靠的同手势跟手依赖 root 读取 Linux evdev；MIUI 输入监听仅作回退。
@@ -49,11 +49,16 @@
     必须锁定该侧并注销传感器，直到本次手势结束；不要在菜单暂时收起后重新选边。
 11. “手指移开时关闭分享菜单”是四种拖拽样式的公共行为。简洁/现代/流光离开菜单与触发带时移除
     线性菜单，环形离开展开面板区域时折叠；同一手势重新进入触发区后都应允许再次展开。
-12. 首页激活状态必须按当前来源解释：传送门模式按“无 Root → 当前版本未注入传送门 →
-   传送门 Root 权限不可用 → 已激活”，
-    无障碍模式按“无 Root → 服务未启用 → 服务/Root 输入连接中 → 已激活”。传送门 Hook 必须通过
+12. 首页激活状态只有“正在检测/未激活/部分激活/已激活”四态，不再显示提示信息：无 Root 是
+    未激活；传送门模式下当前版本未注入或传送门 Root 权限不可用是部分激活；无障碍模式下服务
+    未启用、未连接或 Root 输入未就绪是部分激活。逐项结论必须继续按来源顺序显示在“检测项”
+    卡片里（传送门模式为 Root 权限 → 传送门 Root 权限 → LSPosed 注入 → 传送门版本；无障碍
+    模式为 Root 权限 → 无障碍服务 → 无障碍连接 → Root 输入），其中“LSPosed 注入”只能是
+    检测中/已注入当前版本/传送门未运行/未注入。传送门 Hook 必须通过
     `ModuleActivation.reportInjected()` 上报其编译时 `BuildConfig.VERSION_CODE`；不要把普通的
     `get_settings` 调用当作注入证明，否则 APK 更新后仍运行旧代码的传送门进程会被误报为已激活。
+    上报时机是传送门任一进程的 `Instrumentation.callApplicationOnCreate`，不要退回成只在
+    `TextContentExtensionService` 生命周期里上报，否则传送门不在后台时会被误报为未注入。
 13. 内容获取方式默认是传送门。无障碍模式只由 `DragShareAccessibilityService` 在模块进程中
     工作，仍依赖 Root evdev，并且绝不能扩大 LSPosed 作用域或静默启用无障碍服务。公共运行时
     不得导入 Xposed API；只允许 `PortalHooks`、`PortalContentCaptureSource` 和
@@ -64,11 +69,17 @@
     `adb shell am start`、`monkey`、`input` 和 GUI 自动化），也不得自行执行设备或本地截图
     （包括 `screencap`、`adb exec-out screencap`、`PixelCopy`）。可读取用户主动提供的截图；
     此约束不改变模块运行时为现代悬浮 View 使用原生局部背景模糊的实现。
+16. 激活检测状态属于进程级的 `ActivationMonitor`，不得放回可组合项的 `remember`：切换底栏页签
+    或返回主页不得重新探测，只有 Activity 真正的 `ON_START`（需过滤注册时同步重放的那一次）、
+    内容获取方式变化或点击状态卡片才允许重新检测。等待传送门上报只能观察
+    `ModuleActivation.activationPreferences()` 的变更回调，不要改回轮询；冷启动传送门失败时用
+    `pidof` 区分“传送门未运行”和“未注入”。
 
 ## 代码地图
 
 - `MainHook.java`：限制注入包名。
-- `PortalHooks.java`：安装传送门 Hook、管理生命周期、输入源仲裁和宿主取消信号。
+- `PortalHooks.java`：安装传送门 Hook、管理生命周期、输入源仲裁和宿主取消信号，并在
+  `Instrumentation.callApplicationOnCreate` 后由后台线程上报注入。
 - `RootTouchSource.java`、`EvdevTouchParser.java`：发现触摸设备、解析 evdev 多点触控帧，稳定生成 DOWN/MOVE/UP/CANCEL。
 - `MiuiMotionSource.java`：MIUI 系统监听回退。
 - `CapturedContent.java`、`OverlayWindowPolicy.java`：来源无关的文字/图片模型和传送门/无障碍窗口类型。
@@ -78,8 +89,14 @@
 - `ModernOverlayViews.kt`、`ModernOverlayWindow.java`、`ModernPreviewSizer.java`：现代 Compose 内容、View outline、公开 Window 局部背景模糊和自适应正方形预览。
 - `DragShareSettings.java`：设置默认值、范围校验、本地持久化和 Provider 配置 RPC。
 - `BackgroundTouchBlocker.java`、`FrameworkBinderTransactionResolver.java`：可选地通过系统手势监视器取消原前台窗口的触摸流；直接 API 被拒绝或被隐藏 API 策略屏蔽时，从当前 ROM 的 framework DEX 动态解析输入 Binder 事务号并以 root 回退，失败时旁路观察。
-- `SettingsScreen.kt`：Miuix 设置页（内容开关、目标可见性、批量操作、拖拽排序、外观和触摸参数）。
-- `ModuleActivation.java`：Root 探测、当前版本传送门注入握手和首页激活状态来源。
+- `SettingsScreen.kt`：Miuix 主界面外壳（主页/设置/关于三个底栏页签、左右滑动的
+  `HorizontalPager`、顶栏与底栏的 miuix `textureBlur` 模糊）、主页激活卡片与检测项，以及设置页
+  （内容开关、目标可见性、批量操作、拖拽排序、外观和触摸参数）。
+- `AboutPage.kt`：关于页签内容、OS3 风格头图、玻璃卡片与共享的模糊工具
+  （`rememberDragShareBarBackdrop`、`DragShareBlurredTopBar`、`dragShareGlass`）。
+- `ModuleActivation.java`：Root 探测、当前版本传送门注入握手、`pidof` 传送门存活判断和首页激活状态来源。
+- `ActivationMonitor.kt`：进程级激活检测（检测项文案、`StateFlow` 快照、事件驱动等待传送门上报、
+  仅在真实 `ON_START`/模式变化/点击卡片时重新检测）。
 - `DragAndDrop.kt`：参考 XiaomiHelper 的 LazyColumn 实时换位、边缘自动滚动和回弹状态。
 - `PortalContentCaptureSource.java`：唯一读取传送门私有字段和初始触点的适配层。
 - `DragShareAccessibilityService.java`、`AccessibilityContentCaptureSource.java`：无障碍生命周期、长按协调和来源隔离。
@@ -104,7 +121,7 @@
 .\gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-当前应有 75 个单元测试通过，APK 输出到
+当前应有 80 个单元测试通过，APK 输出到
 `app\build\outputs\apk\debug\app-debug.apk`。交付新的可安装行为时同步递增
 `versionCode` 和 `versionName`；纯文档修改不要求增版。
 

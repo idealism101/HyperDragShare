@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -70,10 +69,10 @@ private const val PROJECT_URL = "https://github.com/Leaf-lsgtky/HyperDragShare"
 fun DragShareAboutPage(
     context: Context,
     dark: Boolean,
-    onBack: () -> Unit,
+    listState: LazyListState,
+    bottomInnerPadding: Dp,
     onOpenLicenses: () -> Unit,
 ) {
-    val listState = rememberLazyListState()
     val scrollBehavior = MiuixScrollBehavior()
     var logoSpacerHeightPx by remember { mutableIntStateOf(0) }
     val scrollProgress by remember {
@@ -111,11 +110,13 @@ fun DragShareAboutPage(
                     titleColor = MiuixTheme.colorScheme.onSurface.copy(
                         alpha = ((scrollProgress - 0.35f) / 0.65f).coerceIn(0f, 1f),
                     ),
-                    navigationIcon = { BackNavigationIcon(onClick = onBack) },
                     scrollBehavior = scrollBehavior,
                 )
             }
         },
+        // Popups opened from this page render in the shell Scaffold that hosts the pager.
+        popupHost = { },
+        contentWindowInsets = pageWindowInsets(),
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -126,6 +127,7 @@ fun DragShareAboutPage(
                 context = context,
                 dark = dark,
                 paddingValues = paddingValues,
+                bottomInnerPadding = bottomInnerPadding,
                 listState = listState,
                 scrollBehavior = scrollBehavior,
                 scrollProgress = scrollProgress,
@@ -141,6 +143,7 @@ private fun DragShareAboutContent(
     context: Context,
     dark: Boolean,
     paddingValues: PaddingValues,
+    bottomInnerPadding: Dp,
     listState: LazyListState,
     scrollBehavior: ScrollBehavior,
     scrollProgress: Float,
@@ -282,7 +285,7 @@ private fun DragShareAboutContent(
                 Column(
                     modifier = Modifier
                         .fillParentMaxHeight()
-                        .padding(bottom = paddingValues.calculateBottomPadding()),
+                        .padding(bottom = paddingValues.calculateBottomPadding() + bottomInnerPadding),
                 ) {
                     Card(
                         modifier = Modifier

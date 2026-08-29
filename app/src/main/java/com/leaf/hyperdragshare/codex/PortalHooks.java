@@ -1,6 +1,7 @@
 package com.leaf.hyperdragshare.codex;
 
 import android.annotation.SuppressLint;
+import android.app.Application;
 import android.content.Context;
 import android.content.Intent;
 import android.database.ContentObserver;
@@ -58,6 +59,7 @@ final class PortalHooks {
             portalClassLoader = classLoader;
             xposedBridgeVersion = readXposedBridgeVersion();
             Class<?> serviceClass = XposedHelpers.findClass(SERVICE_CLASS, classLoader);
+            reportActivationOnApplicationCreate(classLoader);
             suppressOriginalFloatWindows(classLoader);
             hookServiceLifecycle(serviceClass, classLoader);
             hookShareStart(serviceClass);
@@ -66,6 +68,41 @@ final class PortalHooks {
         } catch (Throwable error) {
             log("unable to install Taplus hooks", error);
         }
+    }
+
+    /**
+     * Reports the injected build as soon as any portal process has a Context. The settings UI
+     * must be able to see the current version even when the text service was never created,
+     * for example right after the portal was cold started only to answer this handshake.
+     */
+    private static void reportActivationOnApplicationCreate(ClassLoader classLoader) {
+        XposedHelpers.findAndHookMethod(
+                "android.app.Instrumentation",
+                classLoader,
+                "callApplicationOnCreate",
+                Application.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        if (activationReported) {
+                            return;
+                        }
+                        try {
+                            Application application = (Application) param.args[0];
+                            Context context = application.getApplicationContext() == null
+                                    ? application
+                                    : application.getApplicationContext();
+                            // The provider call may have to start the module process, which
+                            // must not delay the portal's own startup.
+                            new Thread(
+                                    () -> activationReported = reportPortalActivation(context)
+                                            || activationReported,
+                                    "DragShare-PortalActivation").start();
+                        } catch (Throwable error) {
+                            log("unable to report activation on application create", error);
+                        }
+                    }
+                });
     }
 
     private static void suppressOriginalFloatWindows(ClassLoader classLoader) {

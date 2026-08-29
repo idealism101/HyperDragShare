@@ -7,9 +7,9 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
 import android.os.Build
-import android.provider.Settings
 import android.view.ViewConfiguration
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -25,18 +25,27 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -44,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -57,6 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -68,9 +79,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.createBitmap
 import androidx.core.view.WindowCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.LifecycleOwner
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberDecoratedNavEntries
@@ -88,6 +96,8 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.NavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -97,9 +107,13 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.TopAppBarState
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Home
+import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.SelectAll
+import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.menu.OverlayIconDropdownMenu
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
@@ -110,8 +124,8 @@ import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.zhanghai.android.appiconloader.AppIconLoader
@@ -120,24 +134,33 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 private const val ORDER_LIST_INDEX_OFFSET = 1
-private const val PORTAL_ACTIVATION_CHECK_ATTEMPTS = 45
-private const val PORTAL_ACTIVATION_CHECK_INTERVAL_MS = 100L
 
 private sealed interface SettingsRoute : NavKey {
     data object Main : SettingsRoute
     data object Visibility : SettingsRoute
     data object Order : SettingsRoute
     data object Blacklist : SettingsRoute
-    data object About : SettingsRoute
     data object Licenses : SettingsRoute
+}
+
+private enum class MainTab(val label: String, val icon: ImageVector) {
+    Home("主页", MiuixIcons.Home),
+    Settings("设置", MiuixIcons.Settings),
+    About("关于", MiuixIcons.Info),
 }
 
 @Composable
 fun DragShareSettingsApp(context: Context) {
     var settings by remember { mutableStateOf(DragShareSettings.readLocal(context)) }
     val backStack = remember { mutableStateListOf<NavKey>(SettingsRoute.Main) }
-    val mainListState = rememberLazyListState()
-    val mainTopAppBarState = rememberTopAppBarState()
+    // Hoisted above the navigation container so pushing and popping a sub page keeps the
+    // selected tab, the scroll offsets and the collapsed title state of every tab.
+    val pagerState = rememberPagerState(pageCount = { MainTab.entries.size })
+    val homeListState = rememberLazyListState()
+    val homeTopAppBarState = rememberTopAppBarState()
+    val settingsListState = rememberLazyListState()
+    val settingsTopAppBarState = rememberTopAppBarState()
+    val aboutListState = rememberLazyListState()
     val dark = settings.colorMode == DragShareSettings.COLOR_DARK
     val themeController = remember(dark) {
         ThemeController(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light)
@@ -156,15 +179,21 @@ fun DragShareSettingsApp(context: Context) {
     val settingsEntryProvider = remember(backStack) {
         entryProvider<NavKey> {
             entry(SettingsRoute.Main) {
-                MainPage(
+                MainShell(
                     context = context,
                     settings = currentSettings.value,
-                    listState = mainListState,
-                    topAppBarState = mainTopAppBarState,
+                    dark = currentDark.value,
+                    pagerState = pagerState,
+                    homeListState = homeListState,
+                    homeTopAppBarState = homeTopAppBarState,
+                    settingsListState = settingsListState,
+                    settingsTopAppBarState = settingsTopAppBarState,
+                    aboutListState = aboutListState,
+                    isTopEntry = backStack.size == 1,
                     onOpenVisibility = { backStack.add(SettingsRoute.Visibility) },
                     onOpenOrder = { backStack.add(SettingsRoute.Order) },
                     onOpenBlacklist = { backStack.add(SettingsRoute.Blacklist) },
-                    onOpenAbout = { backStack.add(SettingsRoute.About) },
+                    onOpenLicenses = { backStack.add(SettingsRoute.Licenses) },
                     persist = currentPersist.value,
                 )
             }
@@ -192,14 +221,6 @@ fun DragShareSettingsApp(context: Context) {
                     persist = currentPersist.value,
                 )
             }
-            entry(SettingsRoute.About) {
-                DragShareAboutPage(
-                    context = context,
-                    dark = currentDark.value,
-                    onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
-                    onOpenLicenses = { backStack.add(SettingsRoute.Licenses) },
-                )
-            }
             entry(SettingsRoute.Licenses) {
                 DragShareOpenSourceLicensePage(
                     dark = currentDark.value,
@@ -223,16 +244,205 @@ fun DragShareSettingsApp(context: Context) {
     }
 }
 
+@Stable
+private class MainTabState(
+    val pagerState: PagerState,
+    private val coroutineScope: CoroutineScope,
+) {
+    // Tracked separately from the pager so the navigation bar highlights the target tab as soon
+    // as it is tapped instead of waiting for the scroll animation to settle.
+    var selectedPage by mutableIntStateOf(pagerState.currentPage)
+        private set
+
+    fun syncPage() {
+        selectedPage = pagerState.currentPage
+    }
+
+    fun animateToPage(page: Int) {
+        selectedPage = page
+        coroutineScope.launch { pagerState.animateScrollToPage(page) }
+    }
+}
+
+/** Window insets for a page inside the pager: the shell owns the top and bottom bars. */
 @Composable
-private fun MainPage(
+internal fun pageWindowInsets(): WindowInsets =
+    WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal)
+
+@Composable
+private fun MainShell(
+    context: Context,
+    settings: DragShareSettings,
+    dark: Boolean,
+    pagerState: PagerState,
+    homeListState: LazyListState,
+    homeTopAppBarState: TopAppBarState,
+    settingsListState: LazyListState,
+    settingsTopAppBarState: TopAppBarState,
+    aboutListState: LazyListState,
+    isTopEntry: Boolean,
+    onOpenVisibility: () -> Unit,
+    onOpenOrder: () -> Unit,
+    onOpenBlacklist: () -> Unit,
+    onOpenLicenses: () -> Unit,
+    persist: (DragShareSettings) -> Unit,
+) {
+    val coroutineScope = rememberCoroutineScope()
+    val tabState = remember(pagerState, coroutineScope) { MainTabState(pagerState, coroutineScope) }
+    val currentPage = pagerState.currentPage
+    LaunchedEffect(currentPage) { tabState.syncPage() }
+
+    // The bottom bar samples the pager content only. Each page owns a separate backdrop for its
+    // own top bar; capturing a tree that consumes the same LayerBackdrop is what previously
+    // caused RenderThread recursion on HyperOS.
+    val barBackdrop = rememberDragShareBarBackdrop()
+    val barColor = if (barBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface
+
+    BackHandler(enabled = isTopEntry && tabState.selectedPage != 0) {
+        tabState.animateToPage(0)
+    }
+
+    Scaffold(
+        bottomBar = {
+            DragShareBlurredTopBar(backdrop = barBackdrop, blurActive = barBackdrop != null) {
+                NavigationBar(
+                    color = barColor,
+                    showDivider = barBackdrop == null,
+                ) {
+                    MainTab.entries.forEachIndexed { index, tab ->
+                        NavigationBarItem(
+                            selected = tabState.selectedPage == index,
+                            onClick = { tabState.animateToPage(index) },
+                            icon = tab.icon,
+                            label = tab.label,
+                        )
+                    }
+                }
+            }
+        },
+    ) { innerPadding ->
+        val bottomInnerPadding = innerPadding.calculateBottomPadding()
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (barBackdrop != null) Modifier.layerBackdrop(barBackdrop) else Modifier),
+        ) {
+            HorizontalPager(state = pagerState) { page ->
+                when (page) {
+                    MainTab.Home.ordinal -> HomePage(
+                        context = context,
+                        settings = settings,
+                        dark = dark,
+                        listState = homeListState,
+                        topAppBarState = homeTopAppBarState,
+                        bottomInnerPadding = bottomInnerPadding,
+                    )
+
+                    MainTab.Settings.ordinal -> SettingsPage(
+                        context = context,
+                        settings = settings,
+                        listState = settingsListState,
+                        topAppBarState = settingsTopAppBarState,
+                        bottomInnerPadding = bottomInnerPadding,
+                        onOpenVisibility = onOpenVisibility,
+                        onOpenOrder = onOpenOrder,
+                        onOpenBlacklist = onOpenBlacklist,
+                        persist = persist,
+                    )
+
+                    else -> DragShareAboutPage(
+                        context = context,
+                        dark = dark,
+                        listState = aboutListState,
+                        bottomInnerPadding = bottomInnerPadding,
+                        onOpenLicenses = onOpenLicenses,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomePage(
+    context: Context,
+    settings: DragShareSettings,
+    dark: Boolean,
+    listState: LazyListState,
+    topAppBarState: TopAppBarState,
+    bottomInnerPadding: Dp,
+) {
+    val scrollBehavior = MiuixScrollBehavior(state = topAppBarState)
+    val barBackdrop = rememberDragShareBarBackdrop()
+    val barColor = if (barBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface
+    val accessibilityMode = settings.isAccessibilityCaptureMode
+    // Detection lives in ActivationMonitor, so returning to this tab shows the retained result
+    // instead of probing root and the portal again.
+    val snapshot by rememberActivationSnapshot(context, settings.contentCaptureMode)
+
+    Scaffold(
+        topBar = {
+            DragShareBlurredTopBar(backdrop = barBackdrop, blurActive = barBackdrop != null) {
+                TopAppBar(
+                    title = "HyperDragShare",
+                    largeTitle = "HyperDragShare",
+                    color = barColor,
+                    scrollBehavior = scrollBehavior,
+                )
+            }
+        },
+        popupHost = { },
+        contentWindowInsets = pageWindowInsets(),
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (barBackdrop != null) Modifier.layerBackdrop(barBackdrop) else Modifier),
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+                contentPadding = paddingValues,
+            ) {
+                item(key = "activation-status") {
+                    ActivationStatusCard(
+                        snapshot = snapshot,
+                        dark = dark,
+                        onClick = if (accessibilityMode) {
+                            { openAccessibilitySettings(context) }
+                        } else {
+                            // In portal mode the card is the manual re-check: a stopped portal
+                            // is started again and the reports are awaited once more.
+                            { ActivationMonitor.refresh(context, false) }
+                        },
+                    )
+                }
+                item(key = "activation-checks-title") {
+                    SmallTitle(text = "检测项")
+                }
+                item(key = "activation-checks") {
+                    ActivationChecksCard(snapshot = snapshot)
+                }
+                item(key = "home-bottom-inset") {
+                    Spacer(modifier = Modifier.height(bottomInnerPadding + 20.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsPage(
     context: Context,
     settings: DragShareSettings,
     listState: LazyListState,
     topAppBarState: TopAppBarState,
+    bottomInnerPadding: Dp,
     onOpenVisibility: () -> Unit,
     onOpenOrder: () -> Unit,
     onOpenBlacklist: () -> Unit,
-    onOpenAbout: () -> Unit,
     persist: (DragShareSettings) -> Unit,
 ) {
     var showAccessibilityDialog by remember { mutableStateOf(false) }
@@ -293,35 +503,32 @@ private fun MainPage(
         mutableFloatStateOf(settings.accessibilityRecognitionSensitivityPercent.toFloat())
     }
     val scrollBehavior = MiuixScrollBehavior(state = topAppBarState)
+    val barBackdrop = rememberDragShareBarBackdrop()
+    val barColor = if (barBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = "HyperDragShare",
-                largeTitle = "HyperDragShare",
-                scrollBehavior = scrollBehavior,
-            )
+            DragShareBlurredTopBar(backdrop = barBackdrop, blurActive = barBackdrop != null) {
+                TopAppBar(
+                    title = "设置",
+                    largeTitle = "设置",
+                    color = barColor,
+                    scrollBehavior = scrollBehavior,
+                )
+            }
         },
+        popupHost = { },
+        contentWindowInsets = pageWindowInsets(),
     ) { paddingValues ->
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                // The list itself is the snapshot source for the top bar blur.
+                .then(if (barBackdrop != null) Modifier.layerBackdrop(barBackdrop) else Modifier)
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
             contentPadding = paddingValues,
         ) {
-            item(key = "activation-status") {
-                ActivationStatusCard(
-                    context = context,
-                    dark = settings.colorMode == DragShareSettings.COLOR_DARK,
-                    contentCaptureMode = settings.contentCaptureMode,
-                    onOpenAccessibilitySettings = if (settings.isAccessibilityCaptureMode) {
-                        { openAccessibilitySettings(context) }
-                    } else {
-                        null
-                    },
-                )
-            }
             item(key = "content-title") {
                 SmallTitle(text = "分享内容")
             }
@@ -822,26 +1029,8 @@ private fun MainPage(
                 }
             }
 
-            item(key = "about-title") {
-                SmallTitle(text = "关于")
-            }
-            item(key = "about-preferences") {
-                Card(modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    ArrowPreference(
-                        title = "关于 HyperDragShare",
-                        summary = "版本 ${BuildConfig.VERSION_NAME}",
-                        onClick = onOpenAbout,
-                    )
-                }
-            }
-
-            item(key = "footer") {
-                Text(
-                    text = "作用域：传送门 · 版本 ${BuildConfig.VERSION_NAME}",
-                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 20.dp),
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    fontSize = 13.sp,
-                )
+            item(key = "settings-bottom-inset") {
+                Spacer(modifier = Modifier.height(bottomInnerPadding + 20.dp))
             }
         }
         OverlayDialog(
@@ -873,134 +1062,42 @@ private fun MainPage(
     }
 }
 
-private enum class ActivationUiState {
-    Checking,
-    NoRoot,
-    NotInjected,
-    PortalRootUnavailable,
-    AccessibilityDisabled,
-    AccessibilityConnecting,
-    Active,
-}
-
 private fun openAccessibilitySettings(context: Context) {
     context.startActivity(
-        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
     )
 }
 
 @Composable
 private fun ActivationStatusCard(
-    context: Context,
+    snapshot: ActivationSnapshot,
     dark: Boolean,
-    contentCaptureMode: Int,
-    onOpenAccessibilitySettings: (() -> Unit)?,
+    onClick: (() -> Unit)?,
 ) {
-    var refreshGeneration by remember { mutableIntStateOf(0) }
-    var state by remember { mutableStateOf(ActivationUiState.Checking) }
-    val lifecycleOwner = LocalView.current.context as? LifecycleOwner
-
-    DisposableEffect(lifecycleOwner) {
-        if (lifecycleOwner == null) {
-            onDispose { }
-        } else {
-            val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME) {
-                    refreshGeneration++
-                }
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-        }
-    }
-
-    LaunchedEffect(refreshGeneration, contentCaptureMode) {
-        state = ActivationUiState.Checking
-        val rootAvailable = withContext(Dispatchers.IO) {
-            ModuleActivation.hasRootAccess()
-        }
-        if (!rootAvailable) {
-            state = ActivationUiState.NoRoot
-            return@LaunchedEffect
-        }
-        if (contentCaptureMode == DragShareSettings.CONTENT_CAPTURE_ACCESSIBILITY) {
-            state = when {
-                !AccessibilityRuntimeStatus.isServiceEnabled(context) -> {
-                    ActivationUiState.AccessibilityDisabled
-                }
-                !AccessibilityRuntimeStatus.isConnected()
-                        || !AccessibilityRuntimeStatus.isRootInputReady() -> {
-                    ActivationUiState.AccessibilityConnecting
-                }
-                else -> ActivationUiState.Active
-            }
-            return@LaunchedEffect
-        }
-        var injected = ModuleActivation.isCurrentBuildInjected(context)
-        var portalRootGranted = ModuleActivation.isCurrentBuildPortalRootGranted(context)
-        if (!injected || !portalRootGranted) {
-            withContext(Dispatchers.IO) {
-                ModuleActivation.requestPortalInjectionHandshake()
-            }
-            repeat(PORTAL_ACTIVATION_CHECK_ATTEMPTS) {
-                injected = ModuleActivation.isCurrentBuildInjected(context)
-                portalRootGranted = ModuleActivation.isCurrentBuildPortalRootGranted(context)
-                if (injected && portalRootGranted) {
-                    state = ActivationUiState.Active
-                    return@LaunchedEffect
-                }
-                delay(PORTAL_ACTIVATION_CHECK_INTERVAL_MS)
-            }
-        }
-        state = when {
-            !injected -> ActivationUiState.NotInjected
-            !portalRootGranted -> ActivationUiState.PortalRootUnavailable
-            else -> ActivationUiState.Active
-        }
-    }
-
-    val active = state == ActivationUiState.Active
+    val level = snapshot.level
+    val active = level == ActivationLevel.Active
     val containerColor = when {
+        level == ActivationLevel.Checking -> MiuixTheme.colorScheme.surfaceContainer
         active && dark -> Color(0xFF1A3825)
         active -> Color(0xFFDFFAE4)
-        state == ActivationUiState.Checking -> MiuixTheme.colorScheme.surfaceContainer
+        level == ActivationLevel.Partial && dark -> Color(0xFF3A3018)
+        level == ActivationLevel.Partial -> Color(0xFFFAF3DF)
         dark -> Color(0xFF381A1A)
         else -> Color(0xFFFAEEEE)
     }
-    val title = when (state) {
-        ActivationUiState.Checking -> "正在检测"
-        ActivationUiState.NoRoot -> "未获取 Root 权限"
-        ActivationUiState.NotInjected -> "未注入到传送门"
-        ActivationUiState.PortalRootUnavailable -> "传送门未获取 Root 权限"
-        ActivationUiState.AccessibilityDisabled -> "无障碍服务未启用"
-        ActivationUiState.AccessibilityConnecting -> "无障碍服务正在连接"
-        ActivationUiState.Active -> "已激活"
+    val title = when (level) {
+        ActivationLevel.Checking -> "正在检测"
+        ActivationLevel.Inactive -> "未激活"
+        ActivationLevel.Partial -> "部分激活"
+        ActivationLevel.Active -> "已激活"
     }
-    val summary = when (state) {
-        ActivationUiState.Checking -> "正在检查运行环境"
-        ActivationUiState.NoRoot -> "Root 输入通道当前不可用"
-        ActivationUiState.NotInjected -> "当前版本尚未在传送门进程中加载\n如果传送门未启动，该提示为正常现象"
-        ActivationUiState.PortalRootUnavailable -> "传送门进程未通过 Root 权限检测\n如果传送门未启动，该提示为正常现象"
-        ActivationUiState.AccessibilityDisabled -> "请在系统设置中手动开启“HyperDragShare”服务"
-        ActivationUiState.AccessibilityConnecting -> "正在等待无障碍服务和 Root 输入就绪"
-        ActivationUiState.Active -> if (contentCaptureMode == DragShareSettings.CONTENT_CAPTURE_ACCESSIBILITY) {
-            "无障碍服务与 Root 输入均已就绪"
-        } else {
-            "传送门 4.2.1 已加载当前模块"
-        }
-    }
-    val activationMethod = when (state) {
-        ActivationUiState.Checking -> "正在检测"
-        ActivationUiState.NoRoot -> "ROOT"
-        ActivationUiState.NotInjected -> "LSPosed"
-        ActivationUiState.PortalRootUnavailable -> "传送门 ROOT"
-        ActivationUiState.AccessibilityDisabled -> "无障碍"
-        ActivationUiState.AccessibilityConnecting -> "ROOT · 无障碍"
-        ActivationUiState.Active -> if (contentCaptureMode == DragShareSettings.CONTENT_CAPTURE_ACCESSIBILITY) {
-            "ROOT · 无障碍"
-        } else {
-            "ROOT · LSPosed"
+    val iconTint = when (level) {
+        ActivationLevel.Active -> Color(0xFF36D167)
+        ActivationLevel.Partial -> Color(0xFFD1A336)
+        ActivationLevel.Inactive -> Color(0xFFD13636)
+        ActivationLevel.Checking -> {
+            MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.35f)
         }
     }
     val textContentColor = MiuixTheme.colorScheme.onSurface
@@ -1011,7 +1108,7 @@ private fun ActivationStatusCard(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 12.dp),
         colors = CardDefaults.defaultColors(color = containerColor),
-        onClick = onOpenAccessibilitySettings,
+        onClick = onClick,
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Box(
@@ -1028,13 +1125,7 @@ private fun ActivationStatusCard(
                     },
                     contentDescription = null,
                     modifier = Modifier.size(170.dp),
-                    tint = when (state) {
-                        ActivationUiState.Active -> Color(0xFF36D167)
-                        ActivationUiState.Checking -> {
-                            MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.35f)
-                        }
-                        else -> Color(0xFFD13636)
-                    },
+                    tint = iconTint,
                 )
             }
             Column(
@@ -1049,21 +1140,52 @@ private fun ActivationStatusCard(
                     fontWeight = FontWeight.SemiBold,
                     color = textContentColor,
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(36.dp))
                 Text(
                     modifier = Modifier.fillMaxWidth(),
-                    text = summary,
+                    text = snapshot.activationMethod,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                     color = descTextColor,
                 )
-                Spacer(modifier = Modifier.height(36.dp))
+            }
+        }
+    }
+}
+
+/** Detection rows below the status card, laid out like KernelSU's home info card. */
+@Composable
+private fun ActivationChecksCard(snapshot: ActivationSnapshot) {
+    if (snapshot.checks.isEmpty()) return
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+        ) {
+            snapshot.checks.forEachIndexed { index, check ->
                 Text(
-                    modifier = Modifier.fillMaxWidth(),
-                    text = activationMethod,
-                    fontSize = 14.sp,
+                    text = check.title,
+                    fontSize = MiuixTheme.textStyles.headline1.fontSize,
                     fontWeight = FontWeight.Medium,
-                    color = descTextColor,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+                Text(
+                    modifier = Modifier.padding(
+                        top = 2.dp,
+                        bottom = if (index == snapshot.checks.lastIndex) 0.dp else 24.dp,
+                    ),
+                    text = check.content,
+                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    color = if (check.failed) {
+                        Color(0xFFD13636)
+                    } else {
+                        MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    },
                 )
             }
         }
