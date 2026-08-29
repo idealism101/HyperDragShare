@@ -391,7 +391,7 @@ internal object PortalHooks {
 
     private fun hasReadyRootSource(): Boolean {
         val source = rootTouchSource
-        return source != null && source.isReady
+        return source != null && source.isReady()
     }
 
     private fun reportPortalActivation(context: Context): Boolean {

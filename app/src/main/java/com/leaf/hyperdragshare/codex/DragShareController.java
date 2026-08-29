@@ -45,7 +45,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-final class DragShareController {
+public final class DragShareController {
     private static final String TAG = "DragShare/UI";
     private static final int PREVIEW_TEXT_WIDTH_DP = 184;
     private static final int PREVIEW_TEXT_HEIGHT_DP = 112;
