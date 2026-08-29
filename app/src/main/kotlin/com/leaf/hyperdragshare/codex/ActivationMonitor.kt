@@ -45,7 +45,7 @@ internal data class ActivationCheck(
 )
 
 /** Why the portal did not confirm the running build, so the row can name the actual blocker. */
-internal enum class PortalInjectionState { Injected, Stopped, NotInjected }
+internal enum class PortalInjectionState { Injected, Stale, Stopped, NotInjected }
 
 internal data class ActivationSnapshot(
     val level: ActivationLevel = ActivationLevel.Checking,
@@ -76,6 +76,8 @@ internal fun portalVersionText(context: Context): String? = try {
 internal fun activationChecks(
     accessibilityMode: Boolean,
     rootGranted: Boolean? = null,
+    frameworkLabel: String? = null,
+    scopeIncludesPortal: Boolean? = null,
     portalInjection: PortalInjectionState? = null,
     portalRootGranted: Boolean? = null,
     serviceEnabled: Boolean? = null,
@@ -100,6 +102,14 @@ internal fun activationChecks(
             add(check("无障碍连接", serviceConnected, "已连接", "未连接"))
             add(check("Root 输入", rootInputReady, "已就绪", "未就绪"))
         } else {
+            // The framework rows only exist once the framework answered this process. A missing
+            // binder is not a failure: the portal handshake below still proves the injection.
+            if (frameworkLabel != null) {
+                add(ActivationCheck("LSPosed 服务", frameworkLabel))
+            }
+            if (scopeIncludesPortal != null) {
+                add(check("模块作用域", scopeIncludesPortal, "已包含传送门", "缺少传送门"))
+            }
             add(check("传送门 Root 权限", portalRootGranted, "已授权", "不可用"))
             add(
                 ActivationCheck(
@@ -107,6 +117,7 @@ internal fun activationChecks(
                     content = when (portalInjection) {
                         null -> "检测中"
                         PortalInjectionState.Injected -> "已注入当前版本"
+                        PortalInjectionState.Stale -> "旧版本仍在运行"
                         PortalInjectionState.Stopped -> "传送门未运行"
                         PortalInjectionState.NotInjected -> "未注入"
                     },
@@ -178,6 +189,8 @@ internal object ActivationMonitor {
         fun publish(
             level: ActivationLevel,
             rootGranted: Boolean? = null,
+            frameworkLabel: String? = null,
+            scopeIncludesPortal: Boolean? = null,
             portalInjection: PortalInjectionState? = null,
             portalRootGranted: Boolean? = null,
             serviceEnabled: Boolean? = null,
@@ -190,6 +203,8 @@ internal object ActivationMonitor {
                 checks = activationChecks(
                     accessibilityMode = accessibilityMode,
                     rootGranted = rootGranted,
+                    frameworkLabel = frameworkLabel,
+                    scopeIncludesPortal = scopeIncludesPortal,
                     portalInjection = portalInjection,
                     portalRootGranted = portalRootGranted,
                     serviceEnabled = serviceEnabled,
@@ -204,7 +219,9 @@ internal object ActivationMonitor {
         // Re-detection keeps the last result on screen; only a first run or a mode switch
         // falls back to the neutral checking card.
         val previous = mutableSnapshot.value
-        if (previous.checks.isEmpty() || previous.accessibilityMode != accessibilityMode) {
+        val showsCheckingCard = previous.checks.isEmpty()
+            || previous.accessibilityMode != accessibilityMode
+        if (showsCheckingCard) {
             publish(ActivationLevel.Checking)
         }
 
@@ -233,27 +250,73 @@ internal object ActivationMonitor {
             return
         }
 
-        var injected = withContext(Dispatchers.IO) {
-            ModuleActivation.isCurrentBuildInjected(context)
+        // The framework answers from this process, so enablement, scope and the loaded build come
+        // back at once. The handshake below is only needed for the portal's own root grant, or as
+        // the whole answer when no framework binder reached this process.
+        val service = XposedServiceStatus.awaitService()
+        val frameworkLabel = service?.let { XposedServiceStatus.frameworkLabel(it) }
+        val scopeIncludesPortal = if (service == null) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                XposedServiceStatus.scopeIncludesPortal(service, PORTAL_PACKAGE)
+            }
         }
+        val frameworkInjection = if (service == null) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                XposedServiceStatus.portalInjection(service, PORTAL_PACKAGE)
+            }
+        }
+
+        var injected = frameworkInjection == PortalInjectionState.Injected
+            || withContext(Dispatchers.IO) { ModuleActivation.isCurrentBuildInjected(context) }
         var portalRootGranted = ModuleActivation.isCurrentBuildPortalRootGranted(context)
-        var portalStopped = false
+        var handshakeInjection: PortalInjectionState? = null
         if (!injected || !portalRootGranted) {
+            // The rows the framework already answered are filled in while the handshake runs, so a
+            // cold portal does not leave the whole card on "检测中" for twelve seconds. A
+            // re-detection keeps its previous result instead.
+            if (showsCheckingCard) {
+                publish(
+                    level = ActivationLevel.Checking,
+                    rootGranted = true,
+                    frameworkLabel = frameworkLabel,
+                    scopeIncludesPortal = scopeIncludesPortal,
+                )
+            }
             // The portal only carries the hook while one of its processes lives, so a stopped
             // portal is started over root instead of being reported as not injected.
             withContext(Dispatchers.IO) { ModuleActivation.requestPortalInjectionHandshake() }
-            injected = awaitPortalReport(context, PORTAL_INJECTION_TIMEOUT_MS) {
-                ModuleActivation.isCurrentBuildInjected(context)
+            if (!injected) {
+                injected = awaitPortalReport(context, PORTAL_INJECTION_TIMEOUT_MS) {
+                    ModuleActivation.isCurrentBuildInjected(context)
+                }
             }
             if (injected) {
                 // The portal probes its own root grant on a second thread and answers again.
                 portalRootGranted = awaitPortalReport(context, PORTAL_ROOT_REPORT_TIMEOUT_MS) {
                     ModuleActivation.isCurrentBuildPortalRootGranted(context)
                 }
-            } else {
-                portalStopped = portalInstalled == true
+            } else if (frameworkInjection == null) {
+                // Without a framework binder a stopped portal has to be told apart from a live
+                // one that refuses to load the module.
+                handshakeInjection = if (portalInstalled == true
                     && !withContext(Dispatchers.IO) { ModuleActivation.isPortalRunning() }
+                ) {
+                    PortalInjectionState.Stopped
+                } else {
+                    PortalInjectionState.NotInjected
+                }
             }
+        }
+        val portalInjection = when {
+            injected -> PortalInjectionState.Injected
+            // A portal outside the scope never loads the module, whatever its processes report.
+            scopeIncludesPortal == false -> PortalInjectionState.NotInjected
+            frameworkInjection != null -> frameworkInjection
+            else -> handshakeInjection ?: PortalInjectionState.NotInjected
         }
         publish(
             level = if (injected && portalRootGranted) {
@@ -262,18 +325,19 @@ internal object ActivationMonitor {
                 ActivationLevel.Partial
             },
             rootGranted = true,
-            portalInjection = when {
-                injected -> PortalInjectionState.Injected
-                portalStopped -> PortalInjectionState.Stopped
-                else -> PortalInjectionState.NotInjected
-            },
+            frameworkLabel = frameworkLabel,
+            scopeIncludesPortal = scopeIncludesPortal,
+            portalInjection = portalInjection,
             portalRootGranted = portalRootGranted,
         )
         DragShareLog.i(
             LOG_TAG,
             "portal activation injected=" + injected
                 + " portalRoot=" + portalRootGranted
-                + " portalRunning=" + !portalStopped,
+                + " injection=" + portalInjection
+                + " framework=" + (frameworkLabel ?: "unavailable")
+                + " scope=" + scopeIncludesPortal
+                + " frameworkInjection=" + frameworkInjection,
         )
     }
 

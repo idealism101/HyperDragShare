@@ -79,4 +79,74 @@ class ActivationChecksTest {
             ).activationMethod,
         )
     }
+
+    @Test
+    fun theFrameworkRowsOnlyExistWhenTheFrameworkAnswered() {
+        val answered = activationChecks(
+            accessibilityMode = false,
+            rootGranted = true,
+            frameworkLabel = "LSPosed 1.10.2 · API 102",
+            scopeIncludesPortal = true,
+            portalInjection = PortalInjectionState.Injected,
+            portalRootGranted = true,
+            portalInstalled = true,
+        )
+        assertEquals(
+            listOf(
+                "Root 权限",
+                "LSPosed 服务",
+                "模块作用域",
+                "传送门 Root 权限",
+                "LSPosed 注入",
+                "传送门版本",
+                "内容获取方式",
+                "模块版本",
+            ),
+            answered.map { it.title },
+        )
+        val framework = answered.first { it.title == "LSPosed 服务" }
+        assertEquals("LSPosed 1.10.2 · API 102", framework.content)
+        assertFalse(framework.failed)
+        assertEquals("已包含传送门", answered.first { it.title == "模块作用域" }.content)
+
+        // No binder reached the process, so the handshake rows answer alone and neither framework
+        // row is shown as a failure.
+        val silent = activationChecks(
+            accessibilityMode = false,
+            rootGranted = true,
+            portalInjection = PortalInjectionState.Injected,
+            portalRootGranted = true,
+            portalInstalled = true,
+        )
+        assertTrue(silent.none { it.title == "LSPosed 服务" || it.title == "模块作用域" })
+    }
+
+    @Test
+    fun aPortalOutsideTheScopeAndAStalePortalNameTheirOwnBlocker() {
+        val outOfScope = activationChecks(
+            accessibilityMode = false,
+            rootGranted = true,
+            frameworkLabel = "LSPosed 1.10.2 · API 102",
+            scopeIncludesPortal = false,
+            portalInjection = PortalInjectionState.NotInjected,
+            portalRootGranted = false,
+            portalInstalled = true,
+        )
+        val scope = outOfScope.first { it.title == "模块作用域" }
+        assertEquals("缺少传送门", scope.content)
+        assertTrue(scope.failed)
+
+        val stale = activationChecks(
+            accessibilityMode = false,
+            rootGranted = true,
+            frameworkLabel = "LSPosed 1.10.2 · API 102",
+            scopeIncludesPortal = true,
+            portalInjection = PortalInjectionState.Stale,
+            portalRootGranted = false,
+            portalInstalled = true,
+        )
+        val injection = stale.first { it.title == "LSPosed 注入" }
+        assertEquals("旧版本仍在运行", injection.content)
+        assertTrue(injection.failed)
+    }
 }

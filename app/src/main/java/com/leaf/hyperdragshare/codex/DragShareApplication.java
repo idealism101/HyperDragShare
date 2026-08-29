@@ -8,6 +8,9 @@ public final class DragShareApplication extends Application {
     public void onCreate() {
         super.onCreate();
         DragShareLog.configure(DragShareSettings.readLocal(this));
+        // The framework binder is delivered to the process, not to an activity, so activation
+        // detection has an answer waiting the first time the home page asks for one.
+        XposedServiceStatus.register();
         DragShareDiagnostics.captureRuntimeOnce(this, "module application created", null);
         TextSegmenter.preloadIfEnabled(this);
     }
