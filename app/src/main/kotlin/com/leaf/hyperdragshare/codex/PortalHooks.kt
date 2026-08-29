@@ -252,7 +252,7 @@ internal object PortalHooks {
         }
         val context = (service as Context).applicationContext
         val settings = DragShareSettings.readFromProvider(context)
-        if (!settings.isPortalCaptureMode) {
+        if (!settings.isPortalCaptureMode()) {
             return
         }
         applyPortalRuntime()
@@ -417,7 +417,7 @@ internal object PortalHooks {
                 + " logLevel=" + settings.logLevel
                 + " logDestination=" + settings.logDestination,
         )
-        if (!settings.isPortalCaptureMode) {
+        if (!settings.isPortalCaptureMode()) {
             stopPortalRuntime(true)
             return
         }

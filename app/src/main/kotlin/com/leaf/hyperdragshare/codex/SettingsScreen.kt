@@ -375,7 +375,7 @@ private fun HomePage(
     val scrollBehavior = MiuixScrollBehavior(state = topAppBarState)
     val barBackdrop = rememberDragShareBarBackdrop()
     val barColor = if (barBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface
-    val accessibilityMode = settings.isAccessibilityCaptureMode
+    val accessibilityMode = settings.isAccessibilityCaptureMode()
     // Detection lives in ActivationMonitor, so returning to this tab shows the retained result
     // instead of probing root and the portal again.
     val snapshot by rememberActivationSnapshot(context, settings.contentCaptureMode)
@@ -536,7 +536,7 @@ private fun SettingsPage(
                 Card(modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     OverlayDropdownPreference(
                         title = "内容获取方式",
-                        summary = if (settings.isPortalCaptureMode) {
+                        summary = if (settings.isPortalCaptureMode()) {
                             "由传送门识别长按内容"
                         } else {
                             "由无障碍读取文字并截取图片区域"
@@ -559,13 +559,13 @@ private fun SettingsPage(
                     )
                     ArrowPreference(
                         title = "应用黑名单",
-                        summary = if (settings.isPortalCaptureMode) {
+                        summary = if (settings.isPortalCaptureMode()) {
                             "使用传送门的系统黑名单设置"
                         } else {
                             "无障碍识别时跳过指定应用"
                         },
                         onClick = {
-                            if (settings.isPortalCaptureMode) {
+                            if (settings.isPortalCaptureMode()) {
                                 coroutineScope.launch {
                                     val started = withContext(Dispatchers.IO) {
                                         ModuleActivation.openPortalBlacklistSettings()
@@ -583,7 +583,7 @@ private fun SettingsPage(
                             }
                         },
                     )
-                    if (settings.isAccessibilityCaptureMode) {
+                    if (settings.isAccessibilityCaptureMode()) {
                         SwitchPreference(
                             title = "横屏启用识别",
                             summary = "横屏时也允许无障碍读取长按内容",
