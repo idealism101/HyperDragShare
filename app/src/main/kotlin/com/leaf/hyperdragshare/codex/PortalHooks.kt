@@ -514,7 +514,7 @@ internal object PortalHooks {
     private fun deferHostCallIfRootDragActive(chain: Chain, kind: String): Boolean {
         synchronized(DEFERRED_HOST_LOCK) {
             val current = controller
-            if (current == null || !current.isActive || !hasReadyRootSource()) {
+            if (current == null || !current.isActive() || !hasReadyRootSource()) {
                 return false
             }
             for (existing in DEFERRED_HOST_CALLS) {
