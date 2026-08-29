@@ -1430,7 +1430,7 @@ private fun VisibilityGroup(
                                 onClick = { onTargetCheckedChange(target, !checked) },
                             ) {
                                 Text(
-                                    text = target.label?.toString() ?: target.key(),
+                                    text = target.label?.toString() ?: target.key().orEmpty(),
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = MiuixTheme.colorScheme.onSurface,
@@ -1710,7 +1710,7 @@ private fun OrderPage(
             currentPersist.value(
                 copySettings(
                     currentSettings.value,
-                    targetOrder = items.map { it.key() },
+                    targetOrder = items.mapNotNull { it.key() },
                 ),
             )
         },
@@ -1983,7 +1983,7 @@ private fun targetSummary(target: ShareTarget): String {
         target.component?.let { component ->
             component.className
                 .removePrefix("${component.packageName}.")
-        } ?: target.key()
+        } ?: target.key().orEmpty()
         }
     }
 }
