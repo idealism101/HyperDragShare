@@ -1,6 +1,6 @@
 # HyperDragShare 完整实现说明
 
-本文记录 HyperDragShare `1.7.48`（`versionCode 72`）的当前完整实现、关键兼容性选择和已验证
+本文记录 HyperDragShare `1.8.0`（`versionCode 75`）的当前完整实现、关键兼容性选择和已验证
 设备参数。实现目标是：传送门识别长按文字或图片后，在手指附近立即显示预览；同一根手指
 无需抬起即可继续拖动；简洁和现代样式可按设置出现在上、下、左、右或近手侧，流光样式在底部显示横向分享菜单，环形样式可从左右边缘展开半圆
 菜单；停留在可滚动热区时自动滚动；松手落在目标上时直接分享。
@@ -11,12 +11,18 @@
 - 注入包：`com.miui.contentextension`
 - 不注入：`com.miui.contentcatcher`（Application Extension Service `4.1.9`）
 - Android：minSdk 33，targetSdk 34，compileSdk 37
-- LSPosed API：82
+- Xposed API：libxposed 102（`minApiVersion=102`、`targetApiVersion=102`，只支持 `Chain`
+  拦截器模型）
+- 源码语言：全 Kotlin（JVM 17），没有 Java 源文件
 - 可靠输入：root + Linux evdev
 
-LSPosed 默认作用域由 `res/values/arrays.xml` 声明，且 `MainHook` 在运行时再次检查包名。
-因此即使用户误选其他应用，Hook 逻辑也只会在传送门中安装。不要强行停止 Application
-Extension Service；部分 HyperOS 版本会因此连带强停其他应用。
+模块元数据放在 `app/src/main/resources/META-INF/xposed/`：`java_init.list` 指向入口类
+`com.leaf.hyperdragshare.codex.DragShareModule`，`scope.list` 只写 `com.miui.contentextension`，
+`module.prop` 用 `staticScope=true` 把作用域钉死为这一个包。不再使用 `assets/xposed_init`，也不再
+有清单里的 `xposed*` meta-data。`DragShareModule.onPackageLoaded()` 在运行时再次检查包名，因此
+即使框架给出更宽的作用域，Hook 逻辑也只会在传送门中安装。只实现 API 101 及更早版本的框架不会
+加载本模块（这是刻意不做回退的取舍），此时无障碍内容获取方式仍可独立工作。不要强行停止
+Application Extension Service；部分 HyperOS 版本会因此连带强停其他应用。
 
 ## 2. 总体数据流
 
@@ -49,37 +55,43 @@ Root/MIUI 输入源；已连接的无障碍服务收到无障碍模式时才启�
 
 | 文件 | 职责 |
 | --- | --- |
-| `MainHook.java` | 限制 LSPosed 注入包 |
-| `PortalHooks.java` | 传送门 Hook、生命周期、输入源仲裁、取消信号处理 |
-| `RootTouchSource.java`、`EvdevTouchParser.java` | evdev 发现、解析、稳定主触点和 DOWN/MOVE/UP/CANCEL |
-| `MiuiMotionSource.java` | MIUI MotionEvent 回退通道 |
-| `CapturedContent.java`、`OverlayWindowPolicy.java` | 来源无关的文字/图片模型和窗口类型策略 |
-| `DragShareController.java` | 会话状态、悬浮窗、菜单、落点与分享调度；不依赖 Xposed |
-| `PortalGlowView.java` | 流光样式全屏光效、向下进度和托盘展开动画 |
-| `CircleMenuOverlayView.java` | MCP 环形样式的左右边缘光、贴边半圆和进入动画 |
-| `CircleMenuGeometry.java` | 左右菜单的边缘命中、半圆锚点和圆周布局纯逻辑 |
-| `ModernOverlayViews.kt`、`ModernOverlayWindow.java`、`ModernPreviewSizer.java` | 现代样式的 Compose 内容、Android 公共局部背景模糊窗口和可测的自适应正方形预览尺寸 |
-| `DragShareSettings.java` | 设置默认值、范围校验、本地存储、目标可见性/排序和跨进程配置读取 |
-| `DragShareLog.java`、`DragShareDiagnostics.java` | 统一日志等级/落盘、文件导出和调试运行环境与输入节点诊断 |
-| `BackgroundTouchBlocker.java` | 可选取消原前台窗口的触摸流，失败时回退为旁路观察 |
+| `DragShareModule.kt` | libxposed API 102 入口，限制注入包并保证每个进程只安装一次 Hook |
+| `PortalPackage.kt` | 唯一的 `PORTAL_PACKAGE` 常量，模块进程与 Hook 侧共用 |
+| `PortalHooks.kt` | 传送门 Hook、生命周期、输入源仲裁、取消信号处理和延迟重放 |
+| `PortalReflect.kt` | 替代 `XposedHelpers` 的最小反射层：沿父类查找字段/方法，按实参形状缓存 |
+| `XposedServiceStatus.kt` | 唯一持有 libxposed service binder 的类：框架标识、模块作用域和已注入版本 |
+| `RootTouchSource.kt`、`EvdevTouchParser.kt` | evdev 发现、解析、稳定主触点和 DOWN/MOVE/UP/CANCEL |
+| `MiuiMotionSource.kt` | MIUI MotionEvent 回退通道 |
+| `CapturedContent.kt`、`OverlayWindowPolicy.kt` | 来源无关的文字/图片模型和窗口类型策略 |
+| `DragShareController.kt` | 会话状态、悬浮窗、菜单、落点与分享调度；不依赖 Xposed |
+| `PortalGlowView.kt` | 流光样式全屏光效、向下进度和托盘展开动画 |
+| `CircleMenuOverlayView.kt` | MCP 环形样式的左右边缘光、贴边半圆和进入动画 |
+| `CircleMenuGeometry.kt` | 左右菜单的边缘命中、半圆锚点和圆周布局纯逻辑 |
+| `ModernOverlayViews.kt`、`ModernOverlayWindow.kt`、`ModernPreviewSizer.kt` | 现代样式的 Compose 内容、Android 公共局部背景模糊窗口和可测的自适应正方形预览尺寸 |
+| `DragShareSettings.kt` | 设置默认值、范围校验、本地存储、目标可见性/排序和跨进程配置读取 |
+| `DragShareLog.kt`、`DragShareDiagnostics.kt` | 统一日志等级/落盘、文件导出和调试运行环境与输入节点诊断 |
+| `BackgroundTouchBlocker.kt` | 可选取消原前台窗口的触摸流，失败时回退为旁路观察 |
 | `SettingsScreen.kt` | Miuix 设置页面 |
-| `ModuleActivation.java` | Root 探测和当前版本传送门注入握手 |
-| `PortalContentCaptureSource.java` | 唯一读取传送门私有字段、Bitmap 和初始触点的适配层 |
-| `DragShareAccessibilityService.java`、`AccessibilityContentCaptureSource.java` | 无障碍生命周期、Root 长按协调和来源隔离 |
-| `AccessibilityBlacklist.java` | 动态内置排除（当前桌面、默认输入法）和用户应用黑名单判定 |
-| `LongPressGestureDetector.java`、`AccessibilityNodeClassifier.java`、`AccessibilityCandidateSelector.java` | 可单测的长按、节点分类和触点选择 |
-| `AccessibilityScreenshotter.java`、`RootScreenshotter.java`、`ScreenshotRectMapper.java` | API 30+ 无障碍区域截图及 API 28/29 Root 回退 |
-| `ShareTargetRepository.java` | 查询可分享 Activity，并注入复制、保存和文本分词内置动作 |
-| `BitmapEncoder.java` | 将 Bitmap 无损编码为 PNG |
-| `ImageStagingClient.java` | 从传送门进程调用模块 Provider |
-| `ShareImageProvider.java` | 模块 UID 下暂存图片并提供 content URI |
-| `ShareLauncher.java` | 构造并启动显式 ACTION_SEND |
-| `LocalImageSaver.java` | 将图片保存到系统 Pictures 集合并生成时间文件名 |
+| `ModuleActivation.kt` | Root 探测和当前版本传送门注入握手 |
+| `ActivationMonitor.kt` | 进程级激活检测：框架 binder 优先、握手兜底，输出检测项与状态卡 |
+| `PortalContentCaptureSource.kt` | 唯一读取传送门私有字段、Bitmap 和初始触点的适配层 |
+| `DragShareAccessibilityService.kt`、`AccessibilityContentCaptureSource.kt` | 无障碍生命周期、Root 长按协调和来源隔离 |
+| `AccessibilityBlacklist.kt` | 动态内置排除（当前桌面、默认输入法）和用户应用黑名单判定 |
+| `LongPressGestureDetector.kt`、`AccessibilityNodeClassifier.kt`、`AccessibilityCandidateSelector.kt` | 可单测的长按、节点分类和触点选择 |
+| `AccessibilityScreenshotter.kt`、`RootScreenshotter.kt`、`ScreenshotRectMapper.kt` | API 30+ 无障碍区域截图及 API 28/29 Root 回退 |
+| `ShareTargetRepository.kt` | 查询可分享 Activity，并注入复制、保存和文本分词内置动作 |
+| `BitmapEncoder.kt` | 将 Bitmap 无损编码为 PNG |
+| `ImageStagingClient.kt` | 从传送门进程调用模块 Provider |
+| `ShareImageProvider.kt` | 模块 UID 下暂存图片并提供 content URI |
+| `ShareLauncher.kt` | 构造并启动显式 ACTION_SEND |
+| `LocalImageSaver.kt` | 将图片保存到系统 Pictures 集合并生成时间文件名 |
 
 ## 3. 传送门 Hook 与内容抓取
 
-入口 `MainHook.handleLoadPackage()` 只接受 `com.miui.contentextension`，然后由
-`PortalHooks.install()` 安装以下 Hook：
+入口 `DragShareModule.onPackageLoaded()` 只接受 `com.miui.contentextension`，然后由
+`PortalHooks.install(this, param.defaultClassLoader)` 安装以下 Hook。该回调发生在默认
+ClassLoader 就绪之后、`AppComponentFactory` 与 Application 创建之前，因此仍来得及 Hook
+`Instrumentation.callApplicationOnCreate`：
 
 1. `TextContentExtensionService.onCreate()`：先向模块 Provider 上报当前 Hook 的
    `BuildConfig.VERSION_CODE`，注册设置 observer；只有当前模式为传送门时才创建控制器、启动
@@ -102,6 +114,31 @@ Root/MIUI 输入源；已连接的无障碍服务收到无障碍模式时才启�
 
 活动会话中再次收到 `startPick*Task` 会被忽略，防止传送门移动过程中重复初始化并删除已有
 预览。
+
+### 3.1 API 102 的 Chain 模型与延迟重放
+
+libxposed 102 没有 before/after 回调，也没有 `XposedHelpers`、`MethodUnhooker` 和注解式 Hook。
+安装形式统一为 `xposed.hook(executable).intercept(Hooker)`，拦截器内部只有一个 `Chain`：
+
+- 原 `beforeHookedMethod` 的代码写在 `chain.proceed()` 之前，原 `afterHookedMethod` 的代码写在
+  之后，`param.thisObject` / `param.args` / `param.method` 变成 `chain.thisObject` /
+  `chain.args` / `chain.executable`；
+- 原 `param.setResult(null)` 变成不调用 `proceed()` 直接返回，`BaseFloatView.addToWindow()` 的
+  抑制就是这样实现的；
+- Hook 目标由 `PortalReflect.requireMethod()` 用 `getDeclaredMethod` 取得，只接受声明在该类上的
+  方法。继承来的方法不会被当成 Hook 目标，否则一个 Hook 会对该父类的所有子类生效；
+- `PortalHooks` 把 `XposedInterface` 存成 `@Volatile` 静态字段，因为延迟重放发生在真实 UP 时，
+  已经离开了 `onPackageLoaded` 的调用栈。
+
+`cancelTask()` 和控制码 `257` 的延迟重放（时序见 4 和 10）在 102 下用 ORIGIN invoker 完成：暂存
+`chain.executable`、`chain.thisObject` 和 `chain.args`，真实 UP 后执行
+`xposed.getInvoker(method).setType(Invoker.Type.ORIGIN).invoke(receiver, *args)`，等价于旧的
+`XposedBridge.invokeOriginalMethod`。ORIGIN 本身已经跳过全部 Hook，但 `REPLAYING_HOST_CALL`
+这个 ThreadLocal 仍然保留，因为 `handleCallback` 也读它来区分重放与真实宿主调用。
+
+`PortalContentCaptureSource` 和 `MiuiMotionSource` 只做普通反射，因此它们改用 `PortalReflect`
+之后完全不再依赖 Xposed API：公共运行时里只有 `DragShareModule` 和 `PortalHooks` 允许导入
+`io.github.libxposed.api`。
 
 ## 4. 为什么原方案需要“松手后再摸一次”
 
@@ -352,15 +389,19 @@ MCP 还会对截图背景做 `500 ms` 的缩放/平移动画，并在部分设�
   打开系统无障碍授权设置页，传送门模式下点击卡片是手动重新检测；
 - 状态卡下面是“检测项”卡片，按来源顺序逐项给出结论，排版沿用 KernelSU 首页信息卡：标题为
   `headline1` Medium，取值为 `body2`，行间距 `24 dp`，最后一行不留底距，失败项取值用 `#D13636`。
-  传送门模式依次是 Root 权限、传送门 Root 权限、LSPosed 注入、传送门版本、内容获取方式、模块
-  版本；无障碍模式依次是 Root 权限、无障碍服务、无障碍连接、Root 输入、内容获取方式、模块版本。
-  检测尚未完成的项显示“检测中”。“LSPosed 注入”取值为已注入当前版本、传送门未运行或未注入，其中
-  “传送门未运行”是握手超时后由 root `pidof` 确认传送门根本没有进程时的结论。传送门版本通过
+  传送门模式依次是 Root 权限、LSPosed 服务、模块作用域、传送门 Root 权限、LSPosed 注入、传送门
+  版本、内容获取方式、模块版本；无障碍模式依次是 Root 权限、无障碍服务、无障碍连接、Root 输入、
+  内容获取方式、模块版本。“LSPosed 服务”和“模块作用域”只在框架 binder 真的到达模块进程时出现，
+  框架没有回应时整行不显示，绝不能渲染成失败项。检测尚未完成的项显示“检测中”。“LSPosed 注入”
+  取值为已注入当前版本、旧版本仍在运行、传送门未运行或未注入：“旧版本仍在运行”来自框架报告的
+  `loadedVersionCode` 与当前 APK 不一致，“传送门未运行”来自框架返回的空进程列表，或没有框架
+  binder 时握手超时后由 root `pidof` 确认传送门根本没有进程。传送门版本通过
   `QUERY_ALL_PACKAGES` 读取 `com.miui.contentextension` 的 `versionName (longVersionCode)`，
   未安装时显示“未安装”；
 - 检测状态由进程级 `ActivationMonitor` 持有（见 7.1），切换页签或返回主页不会重新探测；
-- 判断逻辑本身不变：模块 Root 通过限时 `su -c id -u` 检测，传送门 Root 由已注入进程在后台执行
-  同一探测后受限上报，注入状态来自版本化 Provider 握手；
+- 判断来源：模块 Root 通过限时 `su -c id -u` 检测，传送门 Root 由已注入进程在后台执行同一探测
+  后受限上报；启用状态、作用域和已注入版本优先来自 libxposed service 的框架 binder，框架不回应
+  时才退回版本化 Provider 握手（见 7.1）；
 - 关于页整体成为“关于”页签，不再有返回图标；开放源代码许可仍是二级页；
 - 可见性页、排序页和无障碍应用黑名单页仍是二级页，都使用 `Scaffold` + `MiuixScrollBehavior` +
   可折叠 `TopAppBar`；二级页使用 Miuix `miuix-navigation3-ui` 的 `NavDisplay`、`NavKey` 和装饰后
@@ -421,7 +462,23 @@ TopAppBar 统一消费 system bars、display cutout 与底部导航栏 insets，
 当前输入法始终显示为已加入、禁用开关的内置项；其余应用的开关保存到模块 UID 的设置中。无障碍
 模式下主页状态卡也可直接打开系统无障碍授权设置页。
 
-### 7.1 激活状态握手
+### 7.1 激活检测：框架优先，握手兜底
+
+模块进程一启动就由 `DragShareApplication` 调用 `XposedServiceStatus.register()` 注册
+`XposedServiceHelper.OnServiceListener`。框架在进程启动时把 binder 发给模块，helper 会把早到的
+binder 重放给新监听器，因此注册时机不敏感。`ActivationMonitor` 的传送门分支先 `awaitService()`
+最多等 `1.5 s`，拿到 `XposedService` 后在同一个进程内直接问框架三件事：
+
+| 检测项 | 框架来源 |
+| --- | --- |
+| LSPosed 服务 | binder 绑定成功本身就说明模块已启用，取值为 `frameworkName frameworkVersion · API apiVersion` |
+| 模块作用域 | `getScope()` 是否含 `com.miui.contentextension` |
+| LSPosed 注入 | `getRunningTargets()` 中传送门进程（`com.miui.contentextension` 或其 `:` 子进程）的 `loadedVersionCode`：等于 `BuildConfig.VERSION_CODE` 为已注入当前版本，不等为旧版本仍在运行，列表为空为传送门未运行 |
+
+这三项都不需要 root，也不需要冷启动传送门，是把首页从“十几秒握手”变成“一次进程内 binder 调用”
+的原因。任一调用抛异常时对应值取 `null`：框架实现差异只会让该行消失并退回下面的握手路径，不会
+被渲染成失败。作用域明确不含传送门时，无论传送门进程报告什么都判为未注入 —— 不在作用域里的宿主
+根本不会加载模块。“传送门 Root 权限”只能由传送门进程自己探测，因此始终走下面的握手。
 
 传送门任一进程的 `Instrumentation.callApplicationOnCreate` 返回后，Hook 就在名为
 `DragShare-PortalActivation` 的后台线程调用 `report_injected`，extras 携带 Hook 代码编译时的
@@ -431,17 +488,19 @@ TopAppBar 统一消费 system bars、display cutout 与底部导航栏 insets，
 `activationReported`。Provider 只接受传送门或模块自身 UID，并且只有上报版本等于当前 APK
 版本时才写入 `module_activation`。主页只有“已注入 + 传送门 Root 探测通过”才显示已激活；有 Root
 但任一检查未通过时状态卡显示“部分激活”，具体是哪一项未通过由“检测项”卡片给出。APK 更新但传送门
-仍保留旧进程时，旧版本值不会匹配，“LSPosed 注入”会保持“未注入”，直到传送门以新模块代码重启。
-普通 `get_settings` 不更新此标记。
+仍保留旧进程时，旧版本值不会匹配：框架能回答时“LSPosed 注入”显示“旧版本仍在运行”，否则显示
+“未注入”，直到传送门以新模块代码重启。普通 `get_settings` 不更新此标记。
 
-主页检测到 Root 但当前版本尚未握手时，会用 root 执行 `am startservice`，目标仅为
+框架已经证明当前版本已注入、且传送门 Root 也已上报时，检测到此结束。只要这两项还缺一项
+（包括根本没有框架 binder 的情况），主页就会用 root 执行 `am startservice`，目标仅为
 `com.miui.contentextension/.services.TextContentExtensionService`（若服务已在运行，其
 `onStartCommand` Hook 也会再次上报）。等待上报不再轮询，而是注册
 `ModuleActivation.activationPreferences()` 的 `OnSharedPreferenceChangeListener`：注入报告最多等
 `12 s`（冷启动传送门需要几秒），确认注入后再最多等 `6 s` 拿传送门 Root 探测的第二份报告。若注入
 报告始终没来，就用 root `pidof com.miui.contentextension` 判断传送门是否根本没起来，从而把
-“传送门未运行”和“未注入”分开显示。`su` 的超时也按用途区分：首次授权可能要等 root 管理器弹窗，
-`id -u` 给 `12 s`，其余命令 `6 s`。该流程不会调用 `force-stop`，也不会启动或停止
+“传送门未运行”和“未注入”分开显示；框架已经回答注入状态时不需要这一步。握手期间已经由框架回答
+的检测项会先发布到卡片上，因此冷启动传送门时整张卡片不会停在“检测中”等满超时。`su` 的超时按
+用途区分：首次授权可能要等 root 管理器弹窗，`id -u` 给 `12 s`，其余命令 `6 s`。该流程不会调用 `force-stop`，也不会启动或停止
 `com.miui.contentcatcher`。若传送门进程仍运行着启用模块前或旧 APK 的代码，启动命令不会伪造激活
 状态，仍需让 LSPosed 重新启动传送门作用域。
 
@@ -457,10 +516,12 @@ XiaomiHelper `AppEnvironmentManager` 的“能力状态归单例、UI 只订阅�
 - 传送门模式下点击状态卡片就是手动重新检测（会再次尝试拉起传送门）；
 - 重新检测期间保留上一次的卡片内容，只有首次检测或模式切换才显示“正在检测”。
 
-XiaomiHelper 那套 libxposed 远程服务（`io.github.libxposed:service`、`XposedServiceHelper`）在此
-不可用：那个 binder 只发给以新 API 编译的模块，本工程是 Xposed API 82，永远收不到，所以注入状态
-只能继续靠自己的 Provider 握手。InstallerX 也没有真正检测注入，它的 `isLSPosedActive` 是用户自己
-在设置里勾的开关。
+`io.github.libxposed:service` 是唯一允许出现在公共运行时的 libxposed 依赖（它是 `implementation`
+依赖，不是 `compileOnly`），而且只允许 `XposedServiceStatus` 为激活检测导入；hook API
+`io.github.libxposed.api` 仍然只能出现在 `DragShareModule` 和 `PortalHooks` 里。API 文档把
+`getRunningTargets()` 标注为诊断用途，个别框架实现可能不返回或直接抛异常，因此 Provider 握手必须
+一直保留为兜底路径，不能因为“框架能答”就删掉。作为对比，InstallerX 并没有真正检测注入，它的
+`isLSPosedActive` 是用户自己在设置里勾的开关。
 
 ### 7.2 配置跨进程传递
 
@@ -507,7 +568,7 @@ Provider 只允许模块自身或传送门调用。读取失败时控制器回�
 
 开关默认关闭。开启后，`DragShareController` 在 root 输入源第一次送入活动会话时调用
 `BackgroundTouchBlocker.start()`；这样不会让无 root 的 MIUI 回退通道误把合成取消当成拖拽结束。
-该类通过 Xposed 反射访问传送门 UID 可见的隐藏
+该类通过普通 Java 反射访问传送门 UID 可见的隐藏
 `InputManager.cancelCurrentTouch`，必要时再调用 `InputManager.monitorGestureInput` 与
 `InputMonitor.pilferPointers`。成功时系统向原
 前台窗口发送取消事件，后续物理坐标仍从 root evdev 旁路读取；DragShare 自己的窗口始终
@@ -578,8 +639,9 @@ Binder transaction code、触摸设备节点或分辨率。root 调用只接受�
 root 文件复制到用户选择的位置，不需要扩大存储权限或公开 Provider URI。
 
 调试模式在模块/传送门进程启动、日志目的地切换和 root 输入探测时异步记录：模块与传送门版本、进程/UID、
-设备型号、系统版本、ABI、Xposed Bridge API、可见的 LSPosed Manager 包版本、root `id`/`su -v`、
-`/proc/bus/input/devices`、`/dev/input` 列表、选中节点的 `getevent -lp` 输出，以及无法发现或
+设备型号、系统版本、ABI、Xposed 框架标识（名称、版本与 API 等级）、可见的 LSPosed Manager 包版本、
+root `id`/`su -v`、`/proc/bus/input/devices`、`/dev/input` 列表、选中节点的 `getevent -lp` 输出，
+以及无法发现或
 解析触摸节点时的完整 `getevent -lp` 转储。为避免泄露用户内容，日志不记录长按选中的文字、
 图片像素、截图或完整分享 URI。
 
@@ -790,7 +852,7 @@ overlay added kind=TEXT/IMAGE
 
 ## 12. 构建与验证
 
-在 `E:\workspace\DragShare` 执行：
+在工程根目录执行（`JAVA_HOME` 必须指向 JDK 17，JDK 21/25 会失败）：
 
 ```powershell
 .\gradlew.bat testDebugUnitTest lintDebug assembleDebug
@@ -802,7 +864,20 @@ APK 输出：
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-当前 80 个单元测试覆盖：当前版本注入握手与限定服务启动命令、检测项的来源顺序/“检测中”占位/
+现代打包的三个文件必须真的进入 APK，所以 `packagingOptions.resources.excludes` 只能排除具体的
+噪声条目，不能再用 `META-INF/**`：
+
+```powershell
+$apk=[IO.Compression.ZipFile]::OpenRead('app\build\outputs\apk\debug\app-debug.apk')
+$apk.Entries | Where-Object { $_.FullName -like 'META-INF/xposed/*' } | Select-Object FullName
+$apk.Dispose()
+```
+
+`assembleRelease` 的 R8 会混淆入口类名，`-adaptresourcefilecontents META-INF/xposed/java_init.list`
+负责把 `java_init.list` 的内容同步成混淆后的名字，因此发布前要跑一次 release 并确认该文件里写的是
+混淆后的入口类（当前为一个短名），而不是空文件或被删掉。
+
+当前 87 个单元测试覆盖：当前版本注入握手与限定服务启动命令、检测项的来源顺序/“检测中”占位/
 传送门未运行与未注入的区分/状态卡来源文案、传送门原浮窗在模块预览挂窗前的
 抑制、底部触发边界、左右滚动方向、边缘深度速度渐变、
 预览位置夹取、流光进度与项目缩放、近手方向映射、环形菜单左右触发/贴边半圆/自然项目顺序、
@@ -810,7 +885,10 @@ app/build/outputs/apk/debug/app-debug.apk
 触摸设备发现、UUID URI 解析、设置默认值/范围/内容开关/目标规则以及本地图片时间文件名；
 新增测试还覆盖内容获取模式迁移、evdev DOWN/MOVE/UP/CANCEL、长按异步失效、节点文字/图片
 候选优先级、截图区域的扩边/缩放/夹取、日志等级/保存位置的 Provider Bundle 同步，以及背景锁开关的 Provider Bundle 同步、root 服务返回
-解析、当前 ROM DEX 的动态 Binder 事务解析与 `InputMonitor` 释放。传送门私有 Hook、WindowManager、root evdev、InputMonitor 权限、Miuix
+解析、当前 ROM DEX 的动态 Binder 事务解析与 `InputMonitor` 释放。API 102 迁移新增的覆盖是
+`PortalReflect` 的缺类返回 `null`、沿父类查找私有实例字段与静态字段、按实参形状缓存重载（含装箱
+基本类型）、拒绝把继承来的方法当 Hook 目标，以及检测项在框架未回应时不显示框架行、作用域外与
+旧版本各自给出的结论。传送门私有 Hook、WindowManager、root evdev、InputMonitor 权限、Miuix
 页面视觉效果和第三方应用分享仍必须实机验证。
 
 系统日志位置下建议使用：
@@ -843,7 +921,7 @@ DragShareProvider: open uid=...
 对大屏输入异常，优先查看 `RootInput: ready` 后是否出现 `decoded ACTION_DOWN/MOVE`，以及同一文件中
 `DragShare/Diagnostics` 的候选节点、`/dev/input` 和 `getevent -lp` 转储。
 
-## 12. 已知限制
+## 13. 已知限制
 
 - 跟手输入的可靠路径需要 root；MIUI 回退是否可用取决于 ROM。
 - 默认旁路读取不消费原页面手势，因此原页面仍可能滚动；背景锁开关依赖 ROM 的输入 Binder
@@ -858,4 +936,8 @@ DragShareProvider: open uid=...
 - 内置保存、外部分享和图片剪贴板都使用原尺寸 PNG；跨 UID 缓存的单文件上限为 `32 MiB`，
   超限时会失败，不会静默改成 JPEG 或降采样。
 - 传送门私有类和字段绑定 4.2.1，升级传送门后可能需要重新适配。
+- 只支持 libxposed API 102。只实现 API 101 及更早版本的框架不会加载本模块，此时只能使用无障碍
+  内容获取方式。
+- `getRunningTargets()` 是框架的诊断接口，不保证每个实现都提供；不提供时注入状态退回 Provider
+  握手，首页检测会重新变慢到十几秒。
 - Provider 的能力 URI 优先兼容分享中继；完整 URI 在缓存清理前应被视为可读取凭证。

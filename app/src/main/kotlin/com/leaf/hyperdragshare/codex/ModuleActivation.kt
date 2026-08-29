@@ -156,7 +156,7 @@ internal object ModuleActivation {
 
     /** Returns the merged command output, or null when the command failed or timed out. */
     private fun runRootCommandOutput(command: String, timeoutSeconds: Long): String? {
-        var process: java.lang.Process? = null
+        var process: Process? = null
         try {
             process = ProcessBuilder("su", "-c", command)
                 .redirectErrorStream(true)
@@ -192,7 +192,7 @@ internal object ModuleActivation {
         }
     }
 
-    private fun readOutput(process: java.lang.Process): String {
+    private fun readOutput(process: Process): String {
         val output = StringBuilder()
         val buffer = ByteArray(512)
         val stream = process.inputStream

@@ -156,12 +156,12 @@ internal object DragShareDiagnostics {
     }
 
     private fun runRootCommand(command: String): String {
-        var process: java.lang.Process? = null
+        var process: Process? = null
         try {
             process = ProcessBuilder("su", "-c", command)
                 .redirectErrorStream(true)
                 .start()
-            val commandProcess: java.lang.Process = process
+            val commandProcess: Process = process
             val output = AtomicReference("")
             val readFailure = AtomicReference<Throwable?>()
             val reader = Thread({

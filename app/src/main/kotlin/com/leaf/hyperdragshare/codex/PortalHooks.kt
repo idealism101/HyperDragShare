@@ -545,7 +545,7 @@ internal object PortalHooks {
             DEFERRED_HOST_CALLS.clear()
         }
 
-        REPLAYING_HOST_CALL.set(java.lang.Boolean.TRUE)
+        REPLAYING_HOST_CALL.set(true)
         try {
             for (call in calls) {
                 try {
