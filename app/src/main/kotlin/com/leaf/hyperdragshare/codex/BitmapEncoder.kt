@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import java.io.IOException
 import java.io.OutputStream
 
-object BitmapEncoder {
+internal object BitmapEncoder {
     /** Writes the source pixels losslessly without applying density scaling. */
     @Throws(IOException::class)
     fun writePng(source: Bitmap?, output: OutputStream?) {

@@ -9,7 +9,7 @@ import java.util.concurrent.ExecutorService
 import kotlin.math.max
 
 /** Coordinates Root pointer events, one node lookup, and optional one-shot screenshot capture. */
-class AccessibilityContentCaptureSource(
+internal class AccessibilityContentCaptureSource(
     private val service: DragShareAccessibilityService,
     private val controller: DragShareController,
     private val rootTouchSource: RootTouchSource?,

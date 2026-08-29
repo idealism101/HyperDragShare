@@ -5,7 +5,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-object GestureMath {
+internal object GestureMath {
     private const val EDGE_SCROLL_ENTRY_SPEED_MULTIPLIER = 0.2f
 
     fun shouldShowMenu(pointerY: Float, triggerTop: Int): Boolean = pointerY >= triggerTop

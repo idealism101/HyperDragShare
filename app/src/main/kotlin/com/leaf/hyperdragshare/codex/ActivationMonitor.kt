@@ -24,9 +24,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** The portal package name; the public runtime must not reach into the Xposed-facing classes. */
-internal const val PORTAL_PACKAGE = "com.miui.contentextension"
-
 /** A cold portal has to be started over root before its hook can answer, which takes seconds. */
 private const val PORTAL_INJECTION_TIMEOUT_MS = 12_000L
 

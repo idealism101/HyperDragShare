@@ -15,7 +15,7 @@ import java.nio.ByteOrder
 import java.util.Locale
 import java.util.regex.Pattern
 
-class RootTouchSource(private val context: Context, private val listener: Listener) {
+internal class RootTouchSource(private val context: Context, private val listener: Listener) {
     fun interface Listener {
         fun onPointerEvent(action: Int, x: Float, y: Float, eventTime: Long)
     }

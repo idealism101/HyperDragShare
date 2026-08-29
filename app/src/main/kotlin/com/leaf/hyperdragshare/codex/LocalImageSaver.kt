@@ -17,7 +17,7 @@ import java.util.Date
 import java.util.Locale
 
 /** Copies a captured image into the user's Pictures collection. */
-object LocalImageSaver {
+internal object LocalImageSaver {
     private const val DIRECTORY_NAME = "HyperDragShare"
     private const val MIME_PNG = "image/png"
 

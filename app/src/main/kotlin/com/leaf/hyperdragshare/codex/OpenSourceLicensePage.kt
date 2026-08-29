@@ -32,7 +32,7 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
-fun DragShareOpenSourceLicensePage(
+internal fun DragShareOpenSourceLicensePage(
     dark: Boolean,
     onBack: () -> Unit,
 ) {

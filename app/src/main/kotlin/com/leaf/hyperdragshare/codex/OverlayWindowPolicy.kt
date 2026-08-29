@@ -3,7 +3,8 @@ package com.leaf.hyperdragshare.codex
 import android.view.WindowManager
 
 /** Window type is a runtime capability, not a property of a share payload. */
-class OverlayWindowPolicy private constructor(
+@ConsistentCopyVisibility
+internal data class OverlayWindowPolicy private constructor(
     val windowType: Int,
     val sourceName: String,
 ) {

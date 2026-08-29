@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 
 /** Current-build injection handshake and root availability checks for the settings UI. */
-object ModuleActivation {
+internal object ModuleActivation {
     const val METHOD_REPORT_INJECTED = "report_injected"
     const val EXTRA_VERSION_CODE = "version_code"
     const val EXTRA_PORTAL_ROOT_GRANTED = "portal_root_granted"

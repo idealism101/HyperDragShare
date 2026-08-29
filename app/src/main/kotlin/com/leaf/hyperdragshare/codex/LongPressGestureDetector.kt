@@ -7,7 +7,7 @@ import android.view.MotionEvent
 import kotlin.math.max
 
 /** Pure long-press state machine. Content capture is owned by its caller. */
-class LongPressGestureDetector(
+internal class LongPressGestureDetector(
     timeoutMillis: Long,
     touchSlop: Float,
     private val callback: Callback?,

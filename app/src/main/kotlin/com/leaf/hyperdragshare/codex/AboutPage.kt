@@ -66,7 +66,7 @@ import androidx.compose.ui.graphics.BlendMode as ComposeBlendMode
 private const val PROJECT_URL = "https://github.com/Leaf-lsgtky/HyperDragShare"
 
 @Composable
-fun DragShareAboutPage(
+internal fun DragShareAboutPage(
     context: Context,
     dark: Boolean,
     listState: LazyListState,

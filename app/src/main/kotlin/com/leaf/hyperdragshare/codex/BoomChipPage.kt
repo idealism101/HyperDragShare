@@ -15,7 +15,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-class BoomChipPage(activity: Activity, contentView: View, enableLegacyMask: Boolean) {
+internal class BoomChipPage(activity: Activity, contentView: View, enableLegacyMask: Boolean) {
 
     val mLayout: BoomWordsLayout
     val mActivity: Activity = activity

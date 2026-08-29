@@ -8,7 +8,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /** Maps getBoundsInScreen coordinates onto a screenshot and safely clamps the result. */
-object ScreenshotRectMapper {
+internal object ScreenshotRectMapper {
     fun mapAndExpand(
         source: Rect?,
         displayWidth: Int,

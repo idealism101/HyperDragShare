@@ -36,7 +36,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
 @Composable
-fun rememberDragDropState(
+internal fun rememberDragDropState(
     lazyListState: LazyListState,
     onMove: (Int, Int) -> Unit,
     onDragFinished: () -> Unit = {},
@@ -61,7 +61,7 @@ fun rememberDragDropState(
     return state
 }
 
-class DragDropState internal constructor(
+internal class DragDropState internal constructor(
     private val state: LazyListState,
     private val onMove: (Int, Int) -> Unit,
     private val onDragFinished: () -> Unit,
@@ -170,7 +170,7 @@ class DragDropState internal constructor(
         get() = offset + size
 }
 
-fun Modifier.dragContainer(dragDropState: DragDropState): Modifier = pointerInput(dragDropState) {
+internal fun Modifier.dragContainer(dragDropState: DragDropState): Modifier = pointerInput(dragDropState) {
     detectDragGesturesAfterLongPress(
         onDrag = { change, offset ->
             change.consume()
@@ -187,7 +187,7 @@ fun Modifier.dragContainer(dragDropState: DragDropState): Modifier = pointerInpu
 }
 
 @Composable
-fun LazyItemScope.DraggableItem(
+internal fun LazyItemScope.DraggableItem(
     dragDropState: DragDropState,
     index: Int,
     modifier: Modifier = Modifier,

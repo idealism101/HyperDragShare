@@ -9,7 +9,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /** Geometry used by the left/right edge semicircle share menu. */
-object CircleMenuGeometry {
+internal object CircleMenuGeometry {
     const val EDGE_NONE = 0
     const val EDGE_LEFT = 1
     const val EDGE_RIGHT = 2

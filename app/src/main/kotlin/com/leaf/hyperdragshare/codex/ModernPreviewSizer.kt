@@ -7,7 +7,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /** Pure sizing policy for the modern square preview. */
-object ModernPreviewSizer {
+internal object ModernPreviewSizer {
     private const val MIN_SIDE_DP = 76f
     private const val TEXT_BASE_SIDE_DP = 76f
     private const val IMAGE_BASE_SIDE_DP = 80f

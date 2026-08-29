@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 
 /** Immutable, source-neutral content handed to the common share UI. */
-class CapturedContent private constructor(
+internal class CapturedContent private constructor(
     val kind: Kind,
     val text: String?,
     val bitmap: Bitmap?,

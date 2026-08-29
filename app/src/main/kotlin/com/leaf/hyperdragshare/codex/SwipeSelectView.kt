@@ -52,7 +52,7 @@ class SwipeSelectView @JvmOverloads constructor(
         }
     }
 
-    fun setBoomPage(boomPage: BoomChipPage) {
+    internal fun setBoomPage(boomPage: BoomChipPage) {
         mBoomPage = boomPage
         mAutoScrollVelocity = 0
         val res = resources

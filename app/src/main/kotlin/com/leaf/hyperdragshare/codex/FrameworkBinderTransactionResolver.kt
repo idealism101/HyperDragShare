@@ -7,7 +7,7 @@ import java.util.LinkedHashSet
 import java.util.zip.ZipFile
 
 /** Resolves hidden AIDL transaction constants from the framework installed on this ROM. */
-object FrameworkBinderTransactionResolver {
+internal object FrameworkBinderTransactionResolver {
     private const val INPUT_MANAGER_STUB = "Landroid/hardware/input/IInputManager\$Stub;"
     private const val CANCEL_CURRENT_TOUCH = "TRANSACTION_cancelCurrentTouch"
     private const val DEX_HEADER_SIZE = 0x70

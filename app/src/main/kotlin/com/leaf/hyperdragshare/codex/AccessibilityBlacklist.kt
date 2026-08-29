@@ -10,7 +10,7 @@ import java.util.LinkedHashMap
 import java.util.LinkedHashSet
 
 /** Resolves dynamic, non-editable accessibility exclusions and applies user exclusions. */
-object AccessibilityBlacklist {
+internal object AccessibilityBlacklist {
     private const val REASON_LAUNCHER = "系统当前启动器"
     private const val REASON_INPUT_METHOD = "当前输入法"
 

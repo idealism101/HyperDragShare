@@ -6,7 +6,7 @@ import android.content.Context
  * Values consumed by the imported BigBang word-chip core. DragShare does not expose the
  * reference app's separate search-settings surface, so the original defaults are retained.
  */
-class BigBangSettings private constructor() {
+internal class BigBangSettings private constructor() {
     val gapRowHeightPercent: Int
         get() = 100
 

@@ -15,7 +15,7 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /** In-process transient message that works when the ROM suppresses background Toasts. */
-class DragShareToast(private val context: Context?, windowPolicy: OverlayWindowPolicy?) {
+internal class DragShareToast(private val context: Context?, windowPolicy: OverlayWindowPolicy?) {
     private val windowManager: WindowManager? = if (context == null) {
         null
     } else {

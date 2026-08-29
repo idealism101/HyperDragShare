@@ -14,14 +14,12 @@ import org.robolectric.annotation.Config
 class AccessibilityNodeClassifierTest {
     @Test
     fun textAndImageFollowDocumentedPriority() {
-        val text = snapshot(Rect(0, 0, 200, 100))
-            .className("android.widget.TextView")
-            .text("Hello")
-            .build()
-        val image = snapshot(Rect(20, 20, 120, 90))
-            .className("android.widget.ImageView")
-            .contentDescription("photo")
-            .build()
+        val text = snapshot(Rect(0, 0, 200, 100), className = "android.widget.TextView", text = "Hello")
+        val image = snapshot(
+            Rect(20, 20, 120, 90),
+            className = "android.widget.ImageView",
+            contentDescription = "photo",
+        )
         val buckets = AccessibilityNodeClassifier(1f, 1080, 2400)
             .classify(listOf(text, image))
 
@@ -34,10 +32,11 @@ class AccessibilityNodeClassifierTest {
 
     @Test
     fun strongImageUsesImageRegionEvenWithDescription() {
-        val image = snapshot(Rect(0, 0, 100, 100))
-            .className("android.widget.ImageView")
-            .contentDescription("A scenic photo")
-            .build()
+        val image = snapshot(
+            Rect(0, 0, 100, 100),
+            className = "android.widget.ImageView",
+            contentDescription = "A scenic photo",
+        )
         val selection = AccessibilityCandidateSelector.select(
             AccessibilityNodeClassifier(1f, 1080, 2400)
                 .classify(listOf(image)),
@@ -51,10 +50,11 @@ class AccessibilityNodeClassifierTest {
 
     @Test
     fun genericImageRoleWithoutTextIsAnImageRegion() {
-        val image = snapshot(Rect(0, 0, 100, 100))
-            .className("android.view.View")
-            .contentDescription("image")
-            .build()
+        val image = snapshot(
+            Rect(0, 0, 100, 100),
+            className = "android.view.View",
+            contentDescription = "image",
+        )
 
         val selection = AccessibilityCandidateSelector.select(
             AccessibilityNodeClassifier(1f, 1080, 2400)
@@ -69,14 +69,13 @@ class AccessibilityNodeClassifierTest {
 
     @Test
     fun smallEmptyLeafAndPasswordAreRejected() {
-        val tiny = snapshot(Rect(0, 0, 20, 20))
-            .className("android.view.View")
-            .build()
-        val password = snapshot(Rect(30, 0, 200, 80))
-            .className("android.widget.EditText")
-            .text("secret")
-            .password(true)
-            .build()
+        val tiny = snapshot(Rect(0, 0, 20, 20), className = "android.view.View")
+        val password = snapshot(
+            Rect(30, 0, 200, 80),
+            className = "android.widget.EditText",
+            text = "secret",
+            password = true,
+        )
         val selection = AccessibilityCandidateSelector.select(
             AccessibilityNodeClassifier(1f, 1080, 2400)
                 .classify(listOf(tiny, password)),
@@ -89,20 +88,22 @@ class AccessibilityNodeClassifierTest {
 
     @Test
     fun sameTextParentIsReplacedBySpecificChild() {
-        val parent = snapshot(Rect(0, 0, 200, 200))
-            .className("android.widget.TextView")
-            .text("same")
-            .leaf(false)
-            .depth(1)
-            .traversalOrder(1)
-            .build()
-        val child = snapshot(Rect(20, 20, 100, 60))
-            .className("android.widget.TextView")
-            .text("same")
-            .leaf(true)
-            .depth(2)
-            .traversalOrder(2)
-            .build()
+        val parent = snapshot(
+            Rect(0, 0, 200, 200),
+            className = "android.widget.TextView",
+            text = "same",
+            leaf = false,
+            depth = 1,
+            traversalOrder = 1,
+        )
+        val child = snapshot(
+            Rect(20, 20, 100, 60),
+            className = "android.widget.TextView",
+            text = "same",
+            leaf = true,
+            depth = 2,
+            traversalOrder = 2,
+        )
         val buckets = AccessibilityNodeClassifier(1f, 1080, 2400)
             .classify(listOf(parent, child))
 
@@ -111,11 +112,25 @@ class AccessibilityNodeClassifierTest {
     }
 
     private companion object {
-        private fun snapshot(bounds: Rect): AccessibilityNodeSnapshot.Builder =
-            AccessibilityNodeSnapshot.Builder()
-                .bounds(bounds)
-                .visible(true)
-                .leaf(true)
-                .traversalOrder(1)
+        private fun snapshot(
+            bounds: Rect,
+            className: String? = null,
+            text: String? = null,
+            contentDescription: String? = null,
+            password: Boolean = false,
+            leaf: Boolean = true,
+            depth: Int = 0,
+            traversalOrder: Int = 1,
+        ): AccessibilityNodeSnapshot = AccessibilityNodeSnapshot(
+            bounds = bounds,
+            className = className,
+            text = text,
+            contentDescription = contentDescription,
+            visible = true,
+            password = password,
+            leaf = leaf,
+            depth = depth,
+            traversalOrder = traversalOrder,
+        )
     }
 }

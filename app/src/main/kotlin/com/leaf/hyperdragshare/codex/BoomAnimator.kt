@@ -8,7 +8,7 @@ import android.view.View
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 
-object BoomAnimator {
+internal object BoomAnimator {
     private val mIterpolator = DecelerateInterpolator(1.5f)
 
     const val BOOM_DURATION = 200L

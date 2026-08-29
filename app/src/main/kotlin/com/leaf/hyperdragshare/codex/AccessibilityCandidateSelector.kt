@@ -1,7 +1,7 @@
 package com.leaf.hyperdragshare.codex
 
 /** Applies the documented editable/text/image selection priority at a point. */
-object AccessibilityCandidateSelector {
+internal object AccessibilityCandidateSelector {
     fun select(buckets: AccessibilityNodeClassifier.Buckets?, x: Float, y: Float): Selection? {
         if (buckets == null) {
             return null

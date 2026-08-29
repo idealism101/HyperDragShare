@@ -12,7 +12,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /** App-icon tile for the built-in text-segmentation action. */
-class TextSegmentationTargetIconDrawable(
+internal class TextSegmentationTargetIconDrawable(
     sourceGlyph: Drawable?,
     private val accentColor: Int,
 ) : Drawable() {

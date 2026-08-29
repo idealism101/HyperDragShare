@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.min
 
 /** Debug-only environment and input diagnostics. It deliberately excludes captured content. */
-object DragShareDiagnostics {
+internal object DragShareDiagnostics {
     private const val TAG = "DragShare/Diagnostics"
     private const val MAX_COMMAND_OUTPUT_CHARS = 48 * 1024
     private const val COMMAND_TIMEOUT_MS = 5_000L
@@ -128,8 +128,8 @@ object DragShareDiagnostics {
         )
         DragShareLog.d(
             TAG,
-            "target portal=" + DragShareModule.TAPLUS_PACKAGE +
-                " version=" + packageVersion(context, DragShareModule.TAPLUS_PACKAGE),
+            "target portal=" + PORTAL_PACKAGE +
+                " version=" + packageVersion(context, PORTAL_PACKAGE),
         )
         DragShareLog.d(
             TAG,

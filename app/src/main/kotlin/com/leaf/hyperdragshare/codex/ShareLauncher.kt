@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 
-object ShareLauncher {
+internal object ShareLauncher {
     fun launch(
         context: Context,
         payload: CapturedContent,

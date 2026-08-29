@@ -153,7 +153,11 @@ class DragShareAccessibilityService : AccessibilityService() {
             !isDeviceLocked() &&
             settings.isAccessibilityCaptureMode()
 
-    fun selectCandidateAt(x: Float, y: Float, gestureId: Long): AccessibilityCandidateSelector.Selection? {
+    internal fun selectCandidateAt(
+        x: Float,
+        y: Float,
+        gestureId: Long,
+    ): AccessibilityCandidateSelector.Selection? {
         if (!isAccessibilityCaptureEnabled()) {
             trace("gesture=" + gestureId + " selection skipped disabled")
             return null
@@ -423,25 +427,25 @@ class DragShareAccessibilityService : AccessibilityService() {
         val insideWebView = inheritedWebView || "android.webkit.WebView" == className
         val childCount = node.childCount
         snapshots.add(
-            AccessibilityNodeSnapshot.Builder()
-                .bounds(bounds)
-                .packageName(asString(node.packageName))
-                .className(className)
-                .viewId(node.viewIdResourceName)
-                .text(asString(node.text))
-                .contentDescription(asString(node.contentDescription))
-                .visible(node.isVisibleToUser)
-                .editable(node.isEditable)
-                .password(node.isPassword)
-                .clickable(node.isClickable)
-                .longClickable(node.isLongClickable)
-                .important(node.isImportantForAccessibility)
-                .leaf(childCount == 0)
-                .insideWebView(insideWebView)
-                .depth(depth)
-                .windowLayer(layer)
-                .traversalOrder(budget.nodeCount)
-                .build(),
+            AccessibilityNodeSnapshot(
+                bounds = bounds,
+                packageName = asString(node.packageName),
+                className = className,
+                viewId = node.viewIdResourceName,
+                text = asString(node.text),
+                contentDescription = asString(node.contentDescription),
+                visible = node.isVisibleToUser,
+                editable = node.isEditable,
+                password = node.isPassword,
+                clickable = node.isClickable,
+                longClickable = node.isLongClickable,
+                important = node.isImportantForAccessibility,
+                leaf = childCount == 0,
+                insideWebView = insideWebView,
+                depth = depth,
+                windowLayer = layer,
+                traversalOrder = budget.nodeCount,
+            ),
         )
         var index = 0
         while (index < childCount && !budget.exhausted) {

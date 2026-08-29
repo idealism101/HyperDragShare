@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /** Logging boundary shared by the module process and the injected portal process. */
-object DragShareLog {
+internal object DragShareLog {
     const val LOG_DIRECTORY = "/data/local/tmp/HyperDragShare"
     const val LOG_FILE_PATH = LOG_DIRECTORY + "/hyperdragshare.log"
 

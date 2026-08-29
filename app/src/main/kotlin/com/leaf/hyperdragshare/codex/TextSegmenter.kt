@@ -9,7 +9,7 @@ import java.io.InputStream
 import java.util.ArrayList
 
 /** Lazy, process-local wrapper around cppjieba for the text-segmentation screen. */
-class TextSegmenter private constructor(context: Context) {
+internal class TextSegmenter private constructor(context: Context) {
     private val appContext: Context = context.applicationContext
     private var initialized = false
     private var preloading = false

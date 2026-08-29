@@ -50,7 +50,12 @@ internal object PortalReflect {
 
     /** Finds the single declared method matching the name and the given arguments. */
     fun findMethod(owner: Class<*>, name: String, args: Array<out Any?>): Method {
-        val key = owner.name + "#" + name + "/" + args.size
+        // The argument shape is part of the key: two overloads of the same arity resolve to
+        // different methods, and a cache keyed by arity alone would hand the second call the first
+        // one's method.
+        val key = owner.name + "#" + name + "/" + args.joinToString(",") {
+            it?.javaClass?.name ?: "null"
+        }
         METHODS[key]?.let { return it }
         var current: Class<*>? = owner
         while (current != null) {

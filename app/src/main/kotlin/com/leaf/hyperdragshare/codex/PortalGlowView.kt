@@ -19,7 +19,7 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /** Full-screen, non-interactive bottom glow used by the portal-style overlay. */
-class PortalGlowView(context: Context, private val dark: Boolean, bottomInset: Int) : View(context) {
+internal class PortalGlowView(context: Context, private val dark: Boolean, bottomInset: Int) : View(context) {
     private val density: Float = context.resources.displayMetrics.density
     private val hazePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val radialPaint = Paint(Paint.ANTI_ALIAS_FLAG)

@@ -150,7 +150,7 @@ private enum class MainTab(val label: String, val icon: ImageVector) {
 }
 
 @Composable
-fun DragShareSettingsApp(context: Context) {
+internal fun DragShareSettingsApp(context: Context) {
     var settings by remember { mutableStateOf(DragShareSettings.readLocal(context)) }
     val backStack = remember { mutableStateListOf<NavKey>(SettingsRoute.Main) }
     // Hoisted above the navigation container so pushing and popping a sub page keeps the

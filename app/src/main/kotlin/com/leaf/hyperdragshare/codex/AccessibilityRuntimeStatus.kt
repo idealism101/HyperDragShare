@@ -5,7 +5,7 @@ import android.content.Context
 import android.view.accessibility.AccessibilityManager
 
 /** Process-local status exposed to the settings UI. The service shares the app process. */
-object AccessibilityRuntimeStatus {
+internal object AccessibilityRuntimeStatus {
     @Volatile
     private var connected = false
 

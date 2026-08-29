@@ -2,7 +2,7 @@ package com.leaf.hyperdragshare.codex
 
 import java.util.UUID
 
-object ShareUriToken {
+internal object ShareUriToken {
     const val PNG_SUFFIX = ".png"
     const val JPEG_SUFFIX = ".jpg"
 

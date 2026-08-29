@@ -24,7 +24,7 @@ class DragShareModule : XposedModule() {
     }
 
     override fun onPackageLoaded(param: PackageLoadedParam) {
-        if (param.packageName != TAPLUS_PACKAGE) {
+        if (param.packageName != PORTAL_PACKAGE) {
             return
         }
         if (!installedPackages.add(param.packageName)) {
@@ -34,8 +34,6 @@ class DragShareModule : XposedModule() {
     }
 
     companion object {
-        const val TAPLUS_PACKAGE = "com.miui.contentextension"
-
         private const val TAG = "DragShare/Module"
     }
 }

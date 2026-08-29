@@ -9,7 +9,7 @@ import java.util.Collections
 import java.util.LinkedHashSet
 
 /** Shared settings stored by the module and read by the injected portal process. */
-class DragShareSettings(
+internal class DragShareSettings(
     colorMode: Int,
     uiStyle: Int,
     edgeTriggerDp: Int,

@@ -3,7 +3,7 @@ package com.leaf.hyperdragshare.codex
 import android.view.MotionEvent
 
 /** Converts multi-touch evdev frames into one stable primary pointer stream. */
-class EvdevTouchParser(private val listener: Listener) {
+internal class EvdevTouchParser(private val listener: Listener) {
     fun interface Listener {
         fun onFrame(action: Int, rawX: Float, rawY: Float)
     }

@@ -9,7 +9,7 @@ import java.io.IOException
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
-object ImageStagingClient {
+internal object ImageStagingClient {
     interface Callback {
         fun onStaged(uri: Uri?)
 

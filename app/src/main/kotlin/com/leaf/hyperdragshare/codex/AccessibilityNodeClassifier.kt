@@ -9,7 +9,7 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /** Classifies snapshots without retaining AccessibilityNodeInfo instances. */
-class AccessibilityNodeClassifier(density: Float, screenWidth: Int, screenHeight: Int) {
+internal class AccessibilityNodeClassifier(density: Float, screenWidth: Int, screenHeight: Int) {
     private val minimumImageDimensionPx: Int = max(1, (20f * max(0.1f, density)).roundToInt())
     private val screenWidth: Int = max(1, screenWidth)
     private val screenHeight: Int = max(1, screenHeight)

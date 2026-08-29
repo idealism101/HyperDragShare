@@ -40,7 +40,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
-class DragShareController(
+internal class DragShareController(
     private val context: Context,
     policy: OverlayWindowPolicy?,
 ) {

@@ -8,7 +8,7 @@ import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
 /** In-memory Root screenshot fallback for Android 9 and 10. */
-class RootScreenshotter {
+internal class RootScreenshotter {
     @Throws(IOException::class)
     fun capture(): Bitmap {
         var process: Process? = null

@@ -13,7 +13,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /** App-icon tile for the built-in save action. */
-class SaveTargetIconDrawable(sourceGlyph: Drawable?, private val accentColor: Int) : Drawable() {
+internal class SaveTargetIconDrawable(sourceGlyph: Drawable?, private val accentColor: Int) : Drawable() {
     private val glyph: Drawable? = if (sourceGlyph == null) {
         null
     } else {

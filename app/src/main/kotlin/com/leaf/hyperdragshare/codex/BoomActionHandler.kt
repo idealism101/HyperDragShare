@@ -14,7 +14,7 @@ import android.widget.RelativeLayout
 import android.widget.Toast
 import java.util.TreeSet
 
-class BoomActionHandler(boomPage: BoomChipPage, enableFakeSelectBar: Boolean) :
+internal class BoomActionHandler(boomPage: BoomChipPage, enableFakeSelectBar: Boolean) :
     CustomScrollView.OnScrollListener {
     private val mBoomPage: BoomChipPage = boomPage
     private val mToast: Toast

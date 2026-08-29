@@ -8,7 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import java.util.LinkedHashMap
 
-object ShareTargetRepository {
+internal object ShareTargetRepository {
     private const val MODULE_PACKAGE = "com.leaf.hyperdragshare.codex"
     const val BUILT_IN_ACTION_TILE_COLOR = 0xFF3482FF.toInt()
 

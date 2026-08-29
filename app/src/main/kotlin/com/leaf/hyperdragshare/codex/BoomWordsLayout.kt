@@ -8,7 +8,7 @@ import android.widget.TextView
 import java.util.TreeSet
 import kotlin.math.max
 
-class BoomWordsLayout(context: Context) {
+internal class BoomWordsLayout(context: Context) {
     private val mMaxRowNumber: Int
     private val mBoomPageWidth: Int
     private val mWordMinWidth: Int

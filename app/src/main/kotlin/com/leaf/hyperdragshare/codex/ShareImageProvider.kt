@@ -107,7 +107,7 @@ class ShareImageProvider : ContentProvider() {
 
         val uri = uriForToken(token, suffix)
         grantReadAccessAsOwner(
-            DragShareModule.TAPLUS_PACKAGE,
+            PORTAL_PACKAGE,
             uri,
         )
         DragShareLog.i(
@@ -283,7 +283,7 @@ class ShareImageProvider : ContentProvider() {
         val packages = packageManager.getPackagesForUid(callingUid)
         if (packages != null) {
             for (packageName in packages) {
-                if (DragShareModule.TAPLUS_PACKAGE == packageName) {
+                if (PORTAL_PACKAGE == packageName) {
                     return
                 }
             }

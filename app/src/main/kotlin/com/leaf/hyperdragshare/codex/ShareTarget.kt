@@ -3,7 +3,7 @@ package com.leaf.hyperdragshare.codex
 import android.content.ComponentName
 import android.graphics.drawable.Drawable
 
-class ShareTarget private constructor(
+internal class ShareTarget private constructor(
     val component: ComponentName?,
     val label: CharSequence?,
     val icon: Drawable?,

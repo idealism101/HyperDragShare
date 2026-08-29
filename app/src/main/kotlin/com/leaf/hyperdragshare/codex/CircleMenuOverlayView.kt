@@ -40,7 +40,7 @@ import kotlin.math.min
  * DragShare overlays.
  */
 @SuppressLint("ViewConstructor")
-class CircleMenuOverlayView(
+internal class CircleMenuOverlayView(
     context: Context,
     private val screenWidth: Int,
     private val screenHeight: Int,

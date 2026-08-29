@@ -21,7 +21,7 @@ import java.util.regex.Pattern
  * the original window cannot continue a scroll. The feature is optional
  * because these are hidden, permission-gated APIs.
  */
-class BackgroundTouchBlocker(
+internal class BackgroundTouchBlocker(
     context: Context?,
     methodInvoker: MethodInvoker? = null,
     rootTouchCanceller: RootTouchCanceller? = null,

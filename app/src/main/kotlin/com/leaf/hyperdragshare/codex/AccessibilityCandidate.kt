@@ -4,7 +4,7 @@ import android.graphics.Rect
 import kotlin.math.max
 
 /** Candidate selected from an immutable accessibility tree snapshot. */
-class AccessibilityCandidate(
+internal class AccessibilityCandidate(
     val kind: Kind,
     snapshot: AccessibilityNodeSnapshot,
     val text: String?,
