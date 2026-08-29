@@ -264,7 +264,6 @@ class DragShareController(
 
     fun latestPointerY(): Float = lastObservedY
 
-    @JvmOverloads
     fun acceptMotionEvent(event: MotionEvent?, beforeFinish: Runnable? = null) {
         if (event == null) {
             return
@@ -277,7 +276,6 @@ class DragShareController(
         acceptPointerEvent(action, x, y, eventTime, "miui", beforeFinish)
     }
 
-    @JvmOverloads
     fun acceptPointerEvent(
         action: Int,
         x: Float,
@@ -2451,7 +2449,6 @@ class DragShareController(
             return (color and 0x00FFFFFF) or (alpha shl 24)
         }
 
-        @JvmStatic
         fun simpleMenuBackgroundOpacityFraction(percent: Int): Float =
             Math.max(0, Math.min(100, percent)) / 100f
 

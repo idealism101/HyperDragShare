@@ -40,7 +40,6 @@ object FrameworkBinderTransactionResolver {
     private const val VALUE_NULL = 0x1e
     private const val VALUE_BOOLEAN = 0x1f
 
-    @JvmStatic
     @Throws(IOException::class)
     fun resolveCancelCurrentTouchTransactionCode(): Int {
         var lastFailure: IOException? = null
@@ -83,7 +82,6 @@ object FrameworkBinderTransactionResolver {
         throw IOException("IInputManager transaction is unavailable on this ROM")
     }
 
-    @JvmStatic
     @Throws(IOException::class)
     fun findStaticInt(dex: ByteArray?, classDescriptor: String?, fieldName: String?): Int {
         if (dex == null || classDescriptor == null || fieldName == null) {
@@ -350,5 +348,5 @@ object FrameworkBinderTransactionResolver {
         }
     }
 
-    private class Cursor(@JvmField var offset: Int)
+    private class Cursor(var offset: Int)
 }

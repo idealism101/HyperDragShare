@@ -5,7 +5,6 @@ class TextSessionCoordinator private constructor() {
     fun peekAdjacentText(direction: String?): String? = null
 
     companion object {
-        @JvmField
         val INSTANCE = TextSessionCoordinator()
     }
 }

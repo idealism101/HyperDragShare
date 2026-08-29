@@ -48,7 +48,6 @@ object DragShareLog {
     private var rotateOnNextOpen = false
     private var droppedFileLines = 0
     private var fileSink: RootFileSink? = null
-    @JvmStatic
     fun configure(settings: DragShareSettings?) {
         if (settings == null) {
             return
@@ -68,43 +67,32 @@ object DragShareLog {
         }
     }
 
-    @JvmStatic
     fun isDebugEnabled(): Boolean = configuredLevel == DragShareSettings.LOG_LEVEL_DEBUG
 
-    @JvmStatic
     fun isFileDestination(): Boolean =
         configuredDestination == DragShareSettings.LOG_DESTINATION_FILE
 
-    @JvmStatic
     fun configuredDestination(): Int = configuredDestination
 
-    @JvmStatic
     fun d(tag: String?, message: String?) {
         emit(DragShareSettings.LOG_LEVEL_DEBUG, Log.DEBUG, tag, message, null)
     }
 
-    @JvmStatic
     fun i(tag: String?, message: String?) {
         emit(DragShareSettings.LOG_LEVEL_INFO, Log.INFO, tag, message, null)
     }
 
-    @JvmStatic
-    @JvmOverloads
     fun w(tag: String?, message: String?, error: Throwable? = null) {
         emit(DragShareSettings.LOG_LEVEL_INFO, Log.WARN, tag, message, error)
     }
 
-    @JvmStatic
-    @JvmOverloads
     fun e(tag: String?, message: String?, error: Throwable? = null) {
         emit(DragShareSettings.LOG_LEVEL_INFO, Log.ERROR, tag, message, error)
     }
 
-    @JvmStatic
     fun exportFileName(): String = "HyperDragShare-" +
         SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) + ".log"
     /** Copies the root-owned diagnostic file to a user-selected document URI. */
-    @JvmStatic
     @Throws(IOException::class)
     fun exportTo(context: Context?, destination: Uri?) {
         if (context == null || destination == null) {

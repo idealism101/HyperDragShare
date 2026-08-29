@@ -16,7 +16,6 @@ object CircleMenuGeometry {
     const val EDGE_TOP = 3
     const val EDGE_BOTTOM = 4
 
-    @JvmStatic
     fun nearestEdge(x: Float, y: Float, width: Int, height: Int, trigger: Float): Int {
         if (width <= 0 || height <= 0 || trigger <= 0 || !x.isFinite() || !y.isFinite()) {
             return EDGE_NONE
@@ -33,7 +32,6 @@ object CircleMenuGeometry {
         return if (left <= right) EDGE_LEFT else EDGE_RIGHT
     }
 
-    @JvmStatic
     fun edgeProgress(x: Float, y: Float, width: Int, height: Int, softDistance: Float): Float {
         if (width <= 0 || height <= 0 || softDistance <= 0 || !x.isFinite() || !y.isFinite()) {
             return 0f
@@ -45,7 +43,6 @@ object CircleMenuGeometry {
         return clamp01(1f - distance / softDistance)
     }
 
-    @JvmStatic
     fun startAngle(edge: Int, itemCount: Int): Int {
         // These values intentionally use the same reference-angle convention
         // as CircleMenu*Layout.setStartAngle(). itemCenterValues converts it
@@ -60,7 +57,6 @@ object CircleMenuGeometry {
         }
     }
 
-    @JvmStatic
     fun displayOrder(edge: Int, itemCount: Int): IntArray {
         val count = max(0, min(5, itemCount))
         val natural = IntArray(count)
@@ -70,7 +66,6 @@ object CircleMenuGeometry {
         return natural
     }
 
-    @JvmStatic
     fun itemCenter(
         edge: Int,
         originX: Float,
@@ -86,7 +81,6 @@ object CircleMenuGeometry {
         return PointF(values[0], values[1])
     }
 
-    @JvmStatic
     fun itemCenterValues(
         edge: Int,
         originX: Float,
@@ -134,7 +128,6 @@ object CircleMenuGeometry {
         )
     }
 
-    @JvmStatic
     fun containerRect(
         edge: Int,
         pointer: Float,
@@ -150,7 +143,6 @@ object CircleMenuGeometry {
         return Rect(bounds[0], bounds[1], bounds[2], bounds[3])
     }
 
-    @JvmStatic
     fun containerBounds(
         edge: Int,
         pointer: Float,
@@ -204,7 +196,6 @@ object CircleMenuGeometry {
         return intArrayOf(left, top, right, bottom)
     }
 
-    @JvmStatic
     fun clamp01(value: Float): Float = max(0f, min(1f, value))
 
     private fun clamp(value: Int, minimum: Int, maximum: Int): Int =

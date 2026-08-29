@@ -5,19 +5,18 @@ import android.graphics.Rect
 
 /** Immutable, source-neutral content handed to the common share UI. */
 class CapturedContent private constructor(
-    @JvmField val kind: Kind,
-    @JvmField val text: String?,
-    @JvmField val bitmap: Bitmap?,
-    @JvmField val sourcePackage: String?,
+    val kind: Kind,
+    val text: String?,
+    val bitmap: Bitmap?,
+    val sourcePackage: String?,
     sourceBounds: Rect?,
-    @JvmField val bitmapOwnedByDragShare: Boolean,
+    val bitmapOwnedByDragShare: Boolean,
 ) {
     enum class Kind {
         TEXT,
         IMAGE,
     }
 
-    @JvmField
     val sourceBounds: Rect? = if (sourceBounds == null) null else Rect(sourceBounds)
 
     fun isImage(): Boolean = kind == Kind.IMAGE
@@ -25,7 +24,6 @@ class CapturedContent private constructor(
     fun mimeType(): String = if (isImage()) "image/png" else "text/plain"
 
     companion object {
-        @JvmStatic
         fun text(value: String?, sourcePackage: String?, sourceBounds: Rect?): CapturedContent? {
             if (value == null || value.trim().isEmpty()) {
                 return null
@@ -33,7 +31,6 @@ class CapturedContent private constructor(
             return CapturedContent(Kind.TEXT, value, null, sourcePackage, sourceBounds, false)
         }
 
-        @JvmStatic
         fun image(
             value: Bitmap?,
             sourcePackage: String?,

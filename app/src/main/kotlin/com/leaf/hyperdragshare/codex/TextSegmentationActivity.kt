@@ -237,7 +237,6 @@ class TextSegmentationActivity : ComponentActivity() {
     }
 
     companion object {
-        @JvmField
         val DBG = true
 
         private const val TAG = "DragShare/BigBang"
@@ -247,10 +246,8 @@ class TextSegmentationActivity : ComponentActivity() {
         private const val SAVED_TEXT = "saved_text"
         private const val SAVED_SEGMENT = "saved_segment"
 
-        @JvmStatic
         fun createIntent(text: String): Intent = createIntent(text, -1, -1)
 
-        @JvmStatic
         fun createIntent(text: String, touchX: Int, touchY: Int): Intent {
             return Intent(Intent.ACTION_SEND).apply {
                 component = ComponentName(

@@ -118,22 +118,16 @@ class AccessibilityNodeClassifier(density: Float, screenWidth: Int, screenHeight
             bounds.height() >= (screenHeight * 0.9f).roundToInt()
 
     class Buckets {
-        @JvmField
         val nativeText: MutableList<AccessibilityCandidate> = ArrayList()
 
-        @JvmField
         val nativeEditable: MutableList<AccessibilityCandidate> = ArrayList()
 
-        @JvmField
         val nativeNonText: MutableList<AccessibilityCandidate> = ArrayList()
 
-        @JvmField
         val webText: MutableList<AccessibilityCandidate> = ArrayList()
 
-        @JvmField
         val webEditable: MutableList<AccessibilityCandidate> = ArrayList()
 
-        @JvmField
         val webNonText: MutableList<AccessibilityCandidate> = ArrayList()
 
         fun candidateCount(): Int =

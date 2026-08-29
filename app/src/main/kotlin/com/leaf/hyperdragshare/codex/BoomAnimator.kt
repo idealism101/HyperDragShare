@@ -85,7 +85,6 @@ object BoomAnimator {
         view.layoutParams = layoutParams
     }
 
-    @JvmStatic
     fun makeFadeIn(view: View, duration: Long) {
         val animator = makeAlphaAnimator(view, 0f, 1.0f, duration)
         animator.addListener(object : Animator.AnimatorListener {
@@ -105,7 +104,6 @@ object BoomAnimator {
         animator.start()
     }
 
-    @JvmStatic
     fun makeFadeOut(view: View, duration: Long) {
         val animator = makeAlphaAnimator(view, 1.0f, 0f, duration)
         animator.addListener(object : Animator.AnimatorListener {
@@ -126,7 +124,6 @@ object BoomAnimator {
         animator.start()
     }
 
-    @JvmStatic
     fun makeHeightAnimation(view: View, targetHeight: Int, startY: Float, endY: Float) {
         if (startY == endY && targetHeight == view.measuredHeight) {
             return
@@ -156,7 +153,6 @@ object BoomAnimator {
         animatorSet.start()
     }
 
-    @JvmStatic
     fun makeBarAndRectShowAnimation(bar: View, rect: View, targetHeight: Int) {
         val animatorSet = AnimatorSet()
         val heightAnimator = makeHeightAnimator(rect, targetHeight, MOVE_DURATION)
@@ -166,7 +162,6 @@ object BoomAnimator {
         animatorSet.start()
     }
 
-    @JvmStatic
     fun makeBarAndRectHideAnimation(bar: View, rect: View) {
         val animatorSet = AnimatorSet()
         val bgAlpha = makeAlphaAnimator(rect, 1.0f, 0f, HIDE_DURATION)
@@ -191,7 +186,6 @@ object BoomAnimator {
         animatorSet.start()
     }
 
-    @JvmStatic
     fun makeSectorAnimation(view: View, toX: Float, toY: Float) {
         val animatorSet = AnimatorSet()
         val scaleAnimator = makeScaleAnimator(view, 0f, 1f, BOOM_DURATION)
@@ -222,7 +216,6 @@ object BoomAnimator {
         animatorSet.start()
     }
 
-    @JvmStatic
     fun makeBoomAnimation(view: View) {
         val animatorSet = AnimatorSet()
         val scaleAnimator = makeScaleAnimator(view, 0f, 1f, BOOM_DURATION)
@@ -253,7 +246,6 @@ object BoomAnimator {
         animatorSet.start()
     }
 
-    @JvmStatic
     fun makeMoveAnimation(view: View, startY: Float, endY: Float) {
         if (startY != endY) {
             val animatorSet = AnimatorSet()

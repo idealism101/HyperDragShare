@@ -21,7 +21,6 @@ object LocalImageSaver {
     private const val DIRECTORY_NAME = "HyperDragShare"
     private const val MIME_PNG = "image/png"
 
-    @JvmStatic
     @Throws(IOException::class)
     fun save(context: Context?, bitmap: Bitmap?): Uri {
         if (context == null || bitmap == null || bitmap.isRecycled) {
@@ -30,11 +29,9 @@ object LocalImageSaver {
         return save(context) { output -> writePng(bitmap, output) }
     }
 
-    @JvmStatic
     fun timestampName(timestampMillis: Long): String =
         SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(timestampMillis)) + ".png"
 
-    @JvmStatic
     @Throws(IOException::class)
     fun writePng(bitmap: Bitmap?, output: OutputStream?) {
         BitmapEncoder.writePng(bitmap, output)

@@ -8,10 +8,8 @@ import kotlin.math.roundToInt
 object GestureMath {
     private const val EDGE_SCROLL_ENTRY_SPEED_MULTIPLIER = 0.2f
 
-    @JvmStatic
     fun shouldShowMenu(pointerY: Float, triggerTop: Int): Boolean = pointerY >= triggerTop
 
-    @JvmStatic
     fun hasMovedTowardMenu(
         menuPosition: Int,
         startX: Float,
@@ -30,7 +28,6 @@ object GestureMath {
         }
     }
 
-    @JvmStatic
     fun edgeScrollDirection(pointerX: Float, viewportWidth: Int, edgeWidth: Int): Int {
         if (viewportWidth <= 0 || edgeWidth <= 0) {
             return 0
@@ -44,7 +41,6 @@ object GestureMath {
         return 0
     }
 
-    @JvmStatic
     fun edgeScrollSpeedMultiplier(
         pointerCoordinate: Float,
         viewportSize: Int,
@@ -85,7 +81,6 @@ object GestureMath {
             (1f - EDGE_SCROLL_ENTRY_SPEED_MULTIPLIER) * depth * depth
     }
 
-    @JvmStatic
     fun clamp(value: Int, minimum: Int, maximum: Int): Int {
         if (maximum < minimum) {
             return minimum
@@ -93,14 +88,12 @@ object GestureMath {
         return max(minimum, min(maximum, value))
     }
 
-    @JvmStatic
     fun previewLeft(pointerX: Float, previewWidth: Int, screenWidth: Int, margin: Int): Int = clamp(
         (pointerX - previewWidth / 2f).roundToInt(),
         margin,
         max(margin, screenWidth - previewWidth - margin),
     )
 
-    @JvmStatic
     fun previewTop(
         pointerY: Float,
         previewHeight: Int,
@@ -113,7 +106,6 @@ object GestureMath {
         max(minimumTop, maximumTop),
     )
 
-    @JvmStatic
     fun dragPullProgress(pointerY: Float, startY: Float, endY: Float): Float {
         if (endY <= startY) {
             return if (pointerY >= endY) 1f else 0f
@@ -121,16 +113,13 @@ object GestureMath {
         return clamp01((pointerY - startY) / (endY - startY))
     }
 
-    @JvmStatic
     fun portalItemScale(pointerX: Float, itemCenterX: Float, itemWidth: Float): Float {
         val distanceInItems = abs(pointerX - itemCenterX) / max(1f, itemWidth)
         return max(1f, 1.23f - distanceInItems * 0.13f)
     }
 
-    @JvmStatic
     fun nearHandMenuOnRight(tilt: Float): Boolean = tilt > 0f
 
-    @JvmStatic
     fun mapRawPoint(
         rawX: Float,
         rawY: Float,
@@ -153,6 +142,5 @@ object GestureMath {
         }
     }
 
-    @JvmStatic
     fun clamp01(value: Float): Float = max(0f, min(1f, value))
 }

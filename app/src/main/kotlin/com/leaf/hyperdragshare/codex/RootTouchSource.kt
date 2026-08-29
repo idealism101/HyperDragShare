@@ -360,7 +360,6 @@ class RootTouchSource(private val context: Context, private val listener: Listen
         private val MAX_X: Pattern = Pattern.compile("ABS_MT_POSITION_X\\s*:.*?max\\s+(\\d+)")
         private val MAX_Y: Pattern = Pattern.compile("ABS_MT_POSITION_Y\\s*:.*?max\\s+(\\d+)")
 
-        @JvmStatic
         fun findTouchDevicePath(devices: CharSequence?): String? {
             if (devices == null) {
                 return null

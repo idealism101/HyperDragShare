@@ -12,7 +12,6 @@ object AccessibilityRuntimeStatus {
     @Volatile
     private var rootInputReady = false
 
-    @JvmStatic
     fun setConnected(value: Boolean) {
         connected = value
         if (!value) {
@@ -20,18 +19,14 @@ object AccessibilityRuntimeStatus {
         }
     }
 
-    @JvmStatic
     fun setRootInputReady(value: Boolean) {
         rootInputReady = value && connected
     }
 
-    @JvmStatic
     fun isConnected(): Boolean = connected
 
-    @JvmStatic
     fun isRootInputReady(): Boolean = rootInputReady
 
-    @JvmStatic
     fun isServiceEnabled(context: Context?): Boolean {
         if (context == null) {
             return false

@@ -4,55 +4,38 @@ import android.graphics.Rect
 
 /** Immutable data copied from AccessibilityNodeInfo before pure classification. */
 class AccessibilityNodeSnapshot private constructor(builder: Builder) {
-    @JvmField
     val bounds: Rect = builder.bounds?.let { Rect(it) } ?: Rect()
 
-    @JvmField
     val packageName: String? = builder.packageName
 
-    @JvmField
     val className: String? = builder.className
 
-    @JvmField
     val viewId: String? = builder.viewId
 
-    @JvmField
     val text: String? = builder.text
 
-    @JvmField
     val contentDescription: String? = builder.contentDescription
 
-    @JvmField
     val visible: Boolean = builder.visible
 
-    @JvmField
     val editable: Boolean = builder.editable
 
-    @JvmField
     val password: Boolean = builder.password
 
-    @JvmField
     val clickable: Boolean = builder.clickable
 
-    @JvmField
     val longClickable: Boolean = builder.longClickable
 
-    @JvmField
     val important: Boolean = builder.important
 
-    @JvmField
     val leaf: Boolean = builder.leaf
 
-    @JvmField
     val insideWebView: Boolean = builder.insideWebView
 
-    @JvmField
     val depth: Int = builder.depth
 
-    @JvmField
     val windowLayer: Int = builder.windowLayer
 
-    @JvmField
     val traversalOrder: Int = builder.traversalOrder
 
     class Builder {

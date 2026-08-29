@@ -6,7 +6,6 @@ import android.content.Intent
 import android.net.Uri
 
 object ShareLauncher {
-    @JvmStatic
     fun launch(
         context: Context,
         payload: CapturedContent,

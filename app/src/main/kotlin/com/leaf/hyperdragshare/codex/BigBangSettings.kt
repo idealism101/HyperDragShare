@@ -19,7 +19,6 @@ class BigBangSettings private constructor() {
     companion object {
         private val INSTANCE = BigBangSettings()
 
-        @JvmStatic
         fun get(context: Context?): BigBangSettings = INSTANCE
     }
 }

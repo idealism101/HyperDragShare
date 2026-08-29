@@ -4,11 +4,10 @@ import android.view.WindowManager
 
 /** Window type is a runtime capability, not a property of a share payload. */
 class OverlayWindowPolicy private constructor(
-    @JvmField val windowType: Int,
-    @JvmField val sourceName: String,
+    val windowType: Int,
+    val sourceName: String,
 ) {
     companion object {
-        @JvmStatic
         @Suppress("DEPRECATION")
         fun portal(): OverlayWindowPolicy {
             // Taplus is granted INTERNAL_SYSTEM_WINDOW. On the verified HyperOS device, the
@@ -19,7 +18,6 @@ class OverlayWindowPolicy private constructor(
             )
         }
 
-        @JvmStatic
         fun accessibility(): OverlayWindowPolicy = OverlayWindowPolicy(
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             "accessibility",

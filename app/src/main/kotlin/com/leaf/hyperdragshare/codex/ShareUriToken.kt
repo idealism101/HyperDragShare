@@ -6,8 +6,6 @@ object ShareUriToken {
     const val PNG_SUFFIX = ".png"
     const val JPEG_SUFFIX = ".jpg"
 
-    @JvmStatic
-    @JvmOverloads
     fun fileName(token: String?, suffix: String? = PNG_SUFFIX): String {
         if (parse(token) == null) {
             throw IllegalArgumentException("Invalid share token")
@@ -18,7 +16,6 @@ object ShareUriToken {
         return token + suffix
     }
 
-    @JvmStatic
     fun parse(pathSegment: String?): String? {
         if (pathSegment == null) {
             return null
@@ -37,7 +34,6 @@ object ShareUriToken {
         }
     }
 
-    @JvmStatic
     fun suffix(pathSegment: String?): String? {
         if (parse(pathSegment) == null) {
             return null

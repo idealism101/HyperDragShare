@@ -2,7 +2,6 @@ package com.leaf.hyperdragshare.codex
 
 /** Applies the documented editable/text/image selection priority at a point. */
 object AccessibilityCandidateSelector {
-    @JvmStatic
     fun select(buckets: AccessibilityNodeClassifier.Buckets?, x: Float, y: Float): Selection? {
         if (buckets == null) {
             return null
@@ -42,7 +41,7 @@ object AccessibilityCandidateSelector {
         return null
     }
 
-    class Selection(@JvmField val candidate: AccessibilityCandidate?) {
+    class Selection(val candidate: AccessibilityCandidate?) {
         fun isImage(): Boolean =
             candidate != null && candidate.kind == AccessibilityCandidate.Kind.IMAGE_REGION
     }

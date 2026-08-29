@@ -555,18 +555,15 @@ class DragShareAccessibilityService : AccessibilityService() {
     }
 
     private class WindowRoot(
-        @JvmField val root: AccessibilityNodeInfo,
-        @JvmField val layer: Int,
+        val root: AccessibilityNodeInfo,
+        val layer: Int,
     )
 
     private class TraversalBudget {
-        @JvmField
         val startedAt: Long = SystemClock.uptimeMillis()
 
-        @JvmField
         var nodeCount: Int = 0
 
-        @JvmField
         var exhausted: Boolean = false
     }
 

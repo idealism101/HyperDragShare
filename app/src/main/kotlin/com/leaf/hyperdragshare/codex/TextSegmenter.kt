@@ -109,7 +109,6 @@ class TextSegmenter private constructor(context: Context) {
         @Volatile
         private var nativeLibraryLoaded = false
 
-        @JvmStatic
         fun get(context: Context): TextSegmenter {
             val existing = instance
             if (existing != null) {
@@ -127,7 +126,6 @@ class TextSegmenter private constructor(context: Context) {
             }
         }
 
-        @JvmStatic
         fun preloadIfEnabled(context: Context?) {
             if (context == null || !DragShareSettings.readLocal(context).preloadTextSegmenter) {
                 return
@@ -135,7 +133,6 @@ class TextSegmenter private constructor(context: Context) {
             preload(context)
         }
 
-        @JvmStatic
         fun preload(context: Context?) {
             if (context != null) {
                 get(context).preloadAsync()
@@ -145,7 +142,6 @@ class TextSegmenter private constructor(context: Context) {
         /**
          * Converts cppjieba's UTF-16 token spans to the original BigBang word/punctuation format.
          */
-        @JvmStatic
         fun buildSegments(text: String?, tokenSpans: IntArray?): IntArray? {
             if (text == null || text.isEmpty() || tokenSpans == null || tokenSpans.isEmpty()) {
                 return null

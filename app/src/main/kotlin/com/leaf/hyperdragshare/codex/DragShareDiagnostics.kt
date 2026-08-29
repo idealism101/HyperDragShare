@@ -27,7 +27,6 @@ object DragShareDiagnostics {
     private val RUNTIME_CAPTURED_DESTINATION = AtomicInteger(Integer.MIN_VALUE)
     private val INPUT_INVENTORY_CAPTURED_DESTINATION = AtomicInteger(Integer.MIN_VALUE)
 
-    @JvmStatic
     fun captureRuntimeOnce(context: Context?, reason: String?, frameworkInfo: String?) {
         if (context == null || !DragShareLog.isDebugEnabled() ||
             !markRuntimeDestinationCaptured()
@@ -38,7 +37,6 @@ object DragShareDiagnostics {
         EXECUTOR.execute { captureRuntime(applicationContext, reason, frameworkInfo) }
     }
 
-    @JvmStatic
     fun captureInputInventory(
         context: Context?,
         reason: String?,
@@ -77,7 +75,6 @@ object DragShareDiagnostics {
         }
     }
 
-    @JvmStatic
     fun captureInputFailure(
         context: Context?,
         reason: String?,

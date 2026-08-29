@@ -21,7 +21,7 @@ import java.util.regex.Pattern
  * the original window cannot continue a scroll. The feature is optional
  * because these are hidden, permission-gated APIs.
  */
-class BackgroundTouchBlocker @JvmOverloads constructor(
+class BackgroundTouchBlocker(
     context: Context?,
     methodInvoker: MethodInvoker? = null,
     rootTouchCanceller: RootTouchCanceller? = null,
@@ -334,7 +334,6 @@ class BackgroundTouchBlocker @JvmOverloads constructor(
             "Result:\\s*Parcel\\(\\s*(?:0x[0-9a-fA-F]+:\\s*)?00000000(?=\\s|\\)|$)",
         )
 
-        @JvmStatic
         fun rootServiceCallCommand(transactionCode: Int): String {
             if (transactionCode <= 0) {
                 throw IllegalArgumentException("transactionCode must be positive")
@@ -344,7 +343,6 @@ class BackgroundTouchBlocker @JvmOverloads constructor(
                 "/system/bin/service call input " + transactionCode
         }
 
-        @JvmStatic
         fun isSuccessfulServiceCallResult(result: String?): Boolean =
             result != null && SUCCESSFUL_SERVICE_CALL.matcher(result).find()
 

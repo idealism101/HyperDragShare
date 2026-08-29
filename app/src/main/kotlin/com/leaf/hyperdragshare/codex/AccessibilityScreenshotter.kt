@@ -17,7 +17,7 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /** One-at-a-time, cancellable region screenshot bridge for accessibility capture. */
-class AccessibilityScreenshotter @JvmOverloads constructor(
+class AccessibilityScreenshotter(
     private val service: AccessibilityService,
     worker: ExecutorService?,
     rootScreenshotter: RootScreenshotter? = null,

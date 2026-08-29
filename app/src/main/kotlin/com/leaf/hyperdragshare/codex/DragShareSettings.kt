@@ -36,79 +36,54 @@ class DragShareSettings(
     logLevel: Int,
     logDestination: Int,
 ) {
-    @JvmField
     val colorMode: Int
 
-    @JvmField
     val contentCaptureMode: Int
 
-    @JvmField
     val uiStyle: Int
 
-    @JvmField
     val edgeTriggerDp: Int
 
-    @JvmField
     val scrollSpeedDpPerSecond: Int
 
-    @JvmField
     val blockBackgroundScroll: Boolean
 
-    @JvmField
     val textSharingEnabled: Boolean
 
-    @JvmField
     val imageSharingEnabled: Boolean
 
-    @JvmField
     val preloadTextSegmenter: Boolean
 
-    @JvmField
     val simpleMenuPosition: Int
 
-    @JvmField
     val simpleMenuOpacityPercent: Int
 
-    @JvmField
     val simpleMenuCornerRadiusDp: Int
 
-    @JvmField
     val simpleMenuEdgeDistanceDp: Int
 
-    @JvmField
     val iconOpacityPercent: Int
 
-    @JvmField
     val modernBlurRadiusDp: Int
 
-    @JvmField
     val modernGlassOpacityPercent: Int
 
-    @JvmField
     val closeMenuWhenPointerLeaves: Boolean
 
-    @JvmField
     val hiddenTargetKeys: Set<String>
 
-    @JvmField
     val targetOrder: List<String>
 
-    @JvmField
     val accessibilityLandscapeRecognitionEnabled: Boolean
 
-    @JvmField
     val accessibilityBlacklistedPackages: Set<String>
 
-    @JvmField
     val accessibilityLongPressTimeoutMillis: Int
 
-    @JvmField
     val accessibilityRecognitionSensitivityPercent: Int
 
-    @JvmField
     val logLevel: Int
 
-    @JvmField
     val logDestination: Int
 
     /** Full constructor including diagnostic logging configuration. */
@@ -899,7 +874,6 @@ class DragShareSettings(
         private const val KEY_LOG_DESTINATION = "log_destination"
 
 
-        @JvmStatic
         fun defaults(): DragShareSettings = DragShareSettings(
             COLOR_LIGHT,
             DEFAULT_UI_STYLE,
@@ -919,7 +893,6 @@ class DragShareSettings(
             DEFAULT_CONTENT_CAPTURE_MODE,
         )
 
-        @JvmStatic
         fun readLocal(context: Context?): DragShareSettings {
             if (context == null) {
                 return defaults()
@@ -1016,7 +989,6 @@ class DragShareSettings(
             )
         }
 
-        @JvmStatic
         fun readFromProvider(portalContext: Context?): DragShareSettings {
             if (portalContext == null) {
                 return defaults()
@@ -1034,7 +1006,6 @@ class DragShareSettings(
             }
         }
 
-        @JvmStatic
         fun fromBundle(bundle: Bundle?): DragShareSettings {
             if (bundle == null) {
                 return defaults()
@@ -1133,7 +1104,6 @@ class DragShareSettings(
             )
         }
 
-        @JvmStatic
         fun settingsUri(): Uri = Uri.parse(SETTINGS_URI_VALUE)
 
         private fun migrateLegacyCopyTargetVisibility(

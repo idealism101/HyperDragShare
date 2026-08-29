@@ -6,7 +6,6 @@ import java.io.OutputStream
 
 object BitmapEncoder {
     /** Writes the source pixels losslessly without applying density scaling. */
-    @JvmStatic
     @Throws(IOException::class)
     fun writePng(source: Bitmap?, output: OutputStream?) {
         if (source == null || source.isRecycled || output == null) {

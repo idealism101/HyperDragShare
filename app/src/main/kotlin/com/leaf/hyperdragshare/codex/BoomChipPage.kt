@@ -354,7 +354,6 @@ class BoomChipPage(activity: Activity, contentView: View, enableLegacyMask: Bool
         mOnAdjacentRequestListener = listener
     }
 
-    @JvmOverloads
     fun replaceWords(
         segment: IntArray,
         text: String,

@@ -4,9 +4,9 @@ import android.content.ComponentName
 import android.graphics.drawable.Drawable
 
 class ShareTarget private constructor(
-    @JvmField val component: ComponentName?,
-    @JvmField val label: CharSequence?,
-    @JvmField val icon: Drawable?,
+    val component: ComponentName?,
+    val label: CharSequence?,
+    val icon: Drawable?,
     private val key: String?,
     private val packageName: String,
     private val builtIn: Boolean,
@@ -38,7 +38,6 @@ class ShareTarget private constructor(
         builtIn && DragShareSettings.TARGET_TEXT_SEGMENTATION == key
 
     companion object {
-        @JvmStatic
         fun saveToLocal(icon: Drawable?): ShareTarget = ShareTarget(
             null,
             "保存到本地",
@@ -48,7 +47,6 @@ class ShareTarget private constructor(
             true,
         )
 
-        @JvmStatic
         fun copyTextToClipboard(icon: Drawable?): ShareTarget = ShareTarget(
             null,
             "复制文本",
@@ -58,7 +56,6 @@ class ShareTarget private constructor(
             true,
         )
 
-        @JvmStatic
         fun copyImageToClipboard(icon: Drawable?): ShareTarget = ShareTarget(
             null,
             "复制图片",
@@ -68,7 +65,6 @@ class ShareTarget private constructor(
             true,
         )
 
-        @JvmStatic
         fun textSegmentation(icon: Drawable?): ShareTarget = ShareTarget(
             null,
             "文本分词",

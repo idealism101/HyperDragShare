@@ -35,7 +35,6 @@ object ModuleActivation {
     private val lock = Any()
     private var portalRootProbeInFlight = false
 
-    @JvmStatic
     fun reportInjected(portalContext: Context?): Boolean {
         val extras = Bundle()
         extras.putLong(EXTRA_VERSION_CODE, BuildConfig.VERSION_CODE.toLong())
@@ -43,7 +42,6 @@ object ModuleActivation {
     }
 
     /** Runs in the injected portal process so the root manager evaluates the portal UID. */
-    @JvmStatic
     fun probePortalRootAccessAsync(portalContext: Context?) {
         if (portalContext == null) {
             return
@@ -90,7 +88,6 @@ object ModuleActivation {
         }
     }
 
-    @JvmStatic
     fun recordInjected(moduleContext: Context, extras: Bundle?) {
         val reportedVersion = extras?.getLong(EXTRA_VERSION_CODE, -1L) ?: -1L
         if (!matchesCurrentBuild(reportedVersion)) {
@@ -110,11 +107,9 @@ object ModuleActivation {
     }
 
     /** The settings UI observes these preferences so a portal report needs no polling. */
-    @JvmStatic
     fun activationPreferences(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    @JvmStatic
     fun isCurrentBuildInjected(context: Context?): Boolean {
         if (context == null) {
             return false
@@ -124,7 +119,6 @@ object ModuleActivation {
         )
     }
 
-    @JvmStatic
     fun isCurrentBuildPortalRootGranted(context: Context?): Boolean {
         if (context == null) {
             return false
@@ -134,33 +128,27 @@ object ModuleActivation {
             preferences.getBoolean(KEY_PORTAL_ROOT_GRANTED, false)
     }
 
-    @JvmStatic
     fun hasRootAccess(): Boolean = runRootCommand("id -u", ROOT_PROBE_TIMEOUT_SECONDS)
 
     /**
      * Starts Taplus' own exported service so an already-running service receives
      * onStartCommand and a stopped service loads the current LSPosed hook.
      */
-    @JvmStatic
     fun requestPortalInjectionHandshake(): Boolean =
         runRootCommand(PORTAL_SERVICE_COMMAND, COMMAND_TIMEOUT_SECONDS)
 
     /** Whether a portal process is alive at all; only root may look at another app's processes. */
-    @JvmStatic
     fun isPortalRunning(): Boolean {
         val pids = runRootCommandOutput(PORTAL_PROCESS_COMMAND, COMMAND_TIMEOUT_SECONDS)
         return pids != null && pids.trim().isNotEmpty()
     }
 
-    @JvmStatic
     fun portalHandshakeCommand(): String = PORTAL_SERVICE_COMMAND
 
     /** Starts Taplus' non-exported blacklist activity as root for the current Android user. */
-    @JvmStatic
     fun openPortalBlacklistSettings(): Boolean =
         runRootCommand(portalBlacklistCommand(), COMMAND_TIMEOUT_SECONDS)
 
-    @JvmStatic
     fun portalBlacklistCommand(): String = PORTAL_BLACKLIST_ACTIVITY_COMMAND
 
     private fun runRootCommand(command: String, timeoutSeconds: Long): Boolean =
@@ -222,7 +210,6 @@ object ModuleActivation {
         return output.toString()
     }
 
-    @JvmStatic
     fun matchesCurrentBuild(reportedVersion: Long): Boolean =
         reportedVersion == BuildConfig.VERSION_CODE.toLong()
 }

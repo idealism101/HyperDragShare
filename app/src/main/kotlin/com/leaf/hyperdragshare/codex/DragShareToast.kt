@@ -27,7 +27,6 @@ class DragShareToast(private val context: Context?, windowPolicy: OverlayWindowP
     private var removeRunnable: Runnable? = null
     private var closed = false
 
-    @JvmOverloads
     fun show(message: String?, duration: Int = android.widget.Toast.LENGTH_SHORT) {
         if (Looper.myLooper() === Looper.getMainLooper()) {
             showOnMain(message, duration)

@@ -48,7 +48,6 @@ internal object XposedServiceStatus {
      * Registers the single framework listener for this process. A binder that arrived before this
      * call is replayed by the helper, so the module app may register whenever it is convenient.
      */
-    @JvmStatic
     @Synchronized
     fun register() {
         if (registered) {

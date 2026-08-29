@@ -31,7 +31,6 @@ class BoomActionHandler(boomPage: BoomChipPage, enableFakeSelectBar: Boolean) :
     lateinit var mFakeSelectBar: RelativeLayout
     lateinit var mSelectRect: LinearLayout
 
-    @JvmField
     val mSelectedId = TreeSet<Int>()
     private val mSelectBarRect = Rect()
     private val mEnableFakeSelectBar: Boolean = enableFakeSelectBar

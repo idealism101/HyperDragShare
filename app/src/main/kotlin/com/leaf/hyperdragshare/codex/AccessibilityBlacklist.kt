@@ -14,7 +14,6 @@ object AccessibilityBlacklist {
     private const val REASON_LAUNCHER = "系统当前启动器"
     private const val REASON_INPUT_METHOD = "当前输入法"
 
-    @JvmStatic
     fun isBlocked(
         context: Context?,
         settings: DragShareSettings?,
@@ -25,7 +24,6 @@ object AccessibilityBlacklist {
         builtInPackages(context),
     )
 
-    @JvmStatic
     fun isBlockedByPackages(
         packageName: String?,
         userBlacklistedPackages: Set<String>?,
@@ -41,11 +39,9 @@ object AccessibilityBlacklist {
                 )
     }
 
-    @JvmStatic
     fun builtInPackages(context: Context?): Set<String> =
         LinkedHashSet(builtInReasons(context).keys)
 
-    @JvmStatic
     fun builtInReasons(context: Context?): Map<String, String> {
         if (context == null) {
             return emptyMap()

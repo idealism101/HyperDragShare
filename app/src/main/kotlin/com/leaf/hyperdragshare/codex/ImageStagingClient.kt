@@ -18,7 +18,6 @@ object ImageStagingClient {
 
     const val AUTHORITY = "com.leaf.hyperdragshare.codex.share"
 
-    @JvmField
     val BASE_URI: Uri = Uri.parse("content://" + AUTHORITY)
     const val METHOD_STAGE = "stage_image"
     const val METHOD_GRANT = "grant_image"
@@ -38,7 +37,6 @@ object ImageStagingClient {
         thread
     }
 
-    @JvmStatic
     fun stage(context: Context?, bitmap: Bitmap?, callback: Callback) {
         EXECUTOR.execute {
             try {
@@ -128,7 +126,6 @@ object ImageStagingClient {
         }
     }
 
-    @JvmStatic
     fun grantReadAccess(context: Context, uri: Uri, packageName: String?) {
         val extras = Bundle()
         extras.putString(RESULT_URI, uri.toString())
@@ -139,7 +136,6 @@ object ImageStagingClient {
         }
     }
 
-    @JvmStatic
     fun revokeReadAccess(context: Context, uri: Uri, packageName: String?) {
         val extras = Bundle()
         extras.putString(RESULT_URI, uri.toString())

@@ -9,7 +9,6 @@ import kotlin.math.min
 
 /** Maps getBoundsInScreen coordinates onto a screenshot and safely clamps the result. */
 object ScreenshotRectMapper {
-    @JvmStatic
     fun mapAndExpand(
         source: Rect?,
         displayWidth: Int,

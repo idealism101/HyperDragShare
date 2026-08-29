@@ -12,12 +12,10 @@ object ShareTargetRepository {
     private const val MODULE_PACKAGE = "com.leaf.hyperdragshare.codex"
     const val BUILT_IN_ACTION_TILE_COLOR = 0xFF3482FF.toInt()
 
-    @JvmStatic
     @SuppressLint("QueryPermissionsNeeded")
     fun query(context: Context, payload: CapturedContent?): List<ShareTarget> =
         query(context, if (payload == null) "text/plain" else payload.mimeType())
 
-    @JvmStatic
     @SuppressLint("QueryPermissionsNeeded")
     fun query(context: Context, mimeType: String?): List<ShareTarget> {
         val packageManager = context.packageManager
@@ -54,7 +52,6 @@ object ShareTargetRepository {
     }
 
     /** Returns the union used by the settings pages, without built-in actions. */
-    @JvmStatic
     fun queryAll(context: Context): List<ShareTarget> {
         val byKey = LinkedHashMap<String, ShareTarget>()
         try {
@@ -78,7 +75,6 @@ object ShareTargetRepository {
      * Applies visibility and the user-defined order to a runtime menu. Built-in actions are
      * deliberately inserted before package targets; each payload type has its own copy action.
      */
-    @JvmStatic
     fun applySettings(
         context: Context?,
         queried: List<ShareTarget>?,
@@ -145,7 +141,6 @@ object ShareTargetRepository {
     }
 
     /** Orders all installed targets for the settings screen, preserving newly discovered apps. */
-    @JvmStatic
     fun orderForSettings(
         queried: List<ShareTarget>?,
         settings: DragShareSettings?,
@@ -172,18 +167,14 @@ object ShareTargetRepository {
         return result
     }
 
-    @JvmStatic
     fun loadSaveIcon(context: Context?): Drawable? = loadBuiltInIcon(context, R.drawable.ic_download)
 
-    @JvmStatic
     fun loadCopyIcon(context: Context?): Drawable? = loadBuiltInIcon(context, R.drawable.ic_copy)
 
-    @JvmStatic
     fun loadTextSegmentationIcon(context: Context?): Drawable? =
         loadBuiltInIcon(context, R.drawable.ic_text_segment)
 
     /** Returns a visually consistent icon for every menu and settings surface. */
-    @JvmStatic
     fun iconForDisplay(target: ShareTarget?): Drawable? {
         if (target == null) {
             return null

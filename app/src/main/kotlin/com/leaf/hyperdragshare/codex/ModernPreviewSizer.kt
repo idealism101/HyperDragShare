@@ -14,7 +14,6 @@ object ModernPreviewSizer {
     private const val MAX_TEXT_GROWTH_DP = 120f
     private const val MAX_IMAGE_GROWTH_DP = 140f
 
-    @JvmStatic
     fun squareSidePx(content: CapturedContent?, screenWidthPx: Int, density: Float): Int {
         val maxSidePx = max(1, screenWidthPx / 3)
         val safeDensity = max(0.1f, density)

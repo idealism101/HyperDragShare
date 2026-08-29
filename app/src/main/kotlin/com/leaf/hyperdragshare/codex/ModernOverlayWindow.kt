@@ -226,7 +226,6 @@ internal class ModernOverlayWindow(
         private val ENTER_INTERPOLATOR = PathInterpolator(0.2f, 0f, 0f, 1f)
         private val EXIT_INTERPOLATOR = PathInterpolator(0.4f, 0f, 1f, 1f)
 
-        @JvmStatic
         fun transparentRoundedBackground(context: Context): GradientDrawable {
             val drawable = GradientDrawable()
             drawable.setColor(Color.TRANSPARENT)
@@ -234,11 +233,9 @@ internal class ModernOverlayWindow(
             return drawable
         }
 
-        @JvmStatic
         fun localBackgroundCornerRadiusPx(context: Context): Float =
             CARD_CORNER_RADIUS_DP * context.resources.displayMetrics.density
 
-        @JvmStatic
         fun shouldUseNativeBackdropBlur(radiusPx: Int, crossWindowBlurEnabled: Boolean): Boolean =
             radiusPx > 0 && crossWindowBlurEnabled
     }
