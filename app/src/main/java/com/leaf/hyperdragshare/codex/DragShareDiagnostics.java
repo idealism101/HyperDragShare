@@ -32,7 +32,7 @@ final class DragShareDiagnostics {
 
     private DragShareDiagnostics() {}
 
-    static void captureRuntimeOnce(Context context, String reason, String xposedBridgeVersion) {
+    static void captureRuntimeOnce(Context context, String reason, String frameworkInfo) {
         if (context == null || !DragShareLog.isDebugEnabled()
                 || !markRuntimeDestinationCaptured()) {
             return;
@@ -40,7 +40,7 @@ final class DragShareDiagnostics {
         Context applicationContext = context.getApplicationContext() == null
                 ? context
                 : context.getApplicationContext();
-        EXECUTOR.execute(() -> captureRuntime(applicationContext, reason, xposedBridgeVersion));
+        EXECUTOR.execute(() -> captureRuntime(applicationContext, reason, frameworkInfo));
     }
 
     static void captureInputInventory(
@@ -97,7 +97,7 @@ final class DragShareDiagnostics {
         });
     }
 
-    private static void captureRuntime(Context context, String reason, String xposedBridgeVersion) {
+    private static void captureRuntime(Context context, String reason, String frameworkInfo) {
         DragShareLog.d(TAG, "runtime diagnostic begin reason=" + safe(reason));
         DragShareLog.d(TAG, "module=" + BuildConfig.VERSION_NAME + " ("
                 + BuildConfig.VERSION_CODE + ") package=" + context.getPackageName()
@@ -113,12 +113,12 @@ final class DragShareDiagnostics {
                 + " incremental=" + safe(Build.VERSION.INCREMENTAL)
                 + " fingerprint=" + safe(Build.FINGERPRINT)
                 + " abis=" + Arrays.toString(Build.SUPPORTED_ABIS));
-        DragShareLog.d(TAG, "target portal=" + MainHook.TAPLUS_PACKAGE
-                + " version=" + packageVersion(context, MainHook.TAPLUS_PACKAGE));
+        DragShareLog.d(TAG, "target portal=" + DragShareModule.TAPLUS_PACKAGE
+                + " version=" + packageVersion(context, DragShareModule.TAPLUS_PACKAGE));
         DragShareLog.d(TAG, "LSPosed Manager package="
                 + packageVersion(context, "org.lsposed.manager"));
-        if (xposedBridgeVersion != null && !xposedBridgeVersion.trim().isEmpty()) {
-            DragShareLog.d(TAG, "Xposed Bridge API=" + xposedBridgeVersion);
+        if (frameworkInfo != null && !frameworkInfo.trim().isEmpty()) {
+            DragShareLog.d(TAG, "Xposed framework=" + frameworkInfo);
         }
         DragShareLog.d(TAG, "root environment:\n"
                 + runRootCommand("id; command -v su; su -v; getprop ro.mi.os.version.name"));

@@ -114,7 +114,7 @@ public final class ShareImageProvider extends ContentProvider {
 
         Uri uri = uriForToken(token, suffix);
         grantReadAccessAsOwner(
-                MainHook.TAPLUS_PACKAGE,
+                DragShareModule.TAPLUS_PACKAGE,
                 uri);
         DragShareLog.i(TAG, "staged format=" + (png ? "png" : "jpeg")
                 + " bytes=" + written);
@@ -289,7 +289,7 @@ public final class ShareImageProvider extends ContentProvider {
         String[] packages = packageManager.getPackagesForUid(callingUid);
         if (packages != null) {
             for (String packageName : packages) {
-                if (MainHook.TAPLUS_PACKAGE.equals(packageName)) {
+                if (DragShareModule.TAPLUS_PACKAGE.equals(packageName)) {
                     return;
                 }
             }
