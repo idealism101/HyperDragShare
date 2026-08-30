@@ -9,7 +9,7 @@
 ## 工程基线
 
 - 工程类型：Android LSPosed 模块，源码全 Kotlin（JVM 17），minSdk 33，targetSdk 34，compileSdk 37。
-- 当前版本：`1.8.1`，`versionCode 76`。
+- 当前版本：`1.8.2`，`versionCode 77`。
 - 已验证宿主：传送门 `4.2.1`，包名 `com.miui.contentextension`。
 - Xposed API：libxposed 102（`io.github.libxposed:api`），入口为
   `com.leaf.hyperdragshare.codex.DragShareModule`，模块元数据在

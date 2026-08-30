@@ -49,6 +49,39 @@ class ModuleActivationTest {
     }
 
     @Test
+    fun aDeniedPortalRootGrantCountsAsAnAnswerInsteadOfAMissingReport() {
+        val context = RuntimeEnvironment.getApplication()
+        ModuleActivation.activationPreferences(context).edit().clear().commit()
+        assertFalse(ModuleActivation.hasCurrentBuildPortalRootReport(context))
+
+        val denied = Bundle()
+        denied.putLong(ModuleActivation.EXTRA_VERSION_CODE, BuildConfig.VERSION_CODE.toLong())
+        denied.putBoolean(ModuleActivation.EXTRA_PORTAL_ROOT_GRANTED, false)
+        ModuleActivation.recordInjected(context, denied)
+
+        // Only the portal can probe its own grant, so a denial ends the wait instead of being
+        // retried over root until the report timeout expires.
+        assertTrue(ModuleActivation.hasCurrentBuildPortalRootReport(context))
+        assertFalse(ModuleActivation.isCurrentBuildPortalRootGranted(context))
+    }
+
+    @Test
+    fun anInjectionReportWithoutTheRootFlagLeavesTheRootQuestionOpen() {
+        val context = RuntimeEnvironment.getApplication()
+        ModuleActivation.activationPreferences(context).edit().clear().commit()
+
+        val injectionOnly = Bundle()
+        injectionOnly.putLong(
+            ModuleActivation.EXTRA_VERSION_CODE,
+            BuildConfig.VERSION_CODE.toLong(),
+        )
+        ModuleActivation.recordInjected(context, injectionOnly)
+
+        assertTrue(ModuleActivation.isCurrentBuildInjected(context))
+        assertFalse(ModuleActivation.hasCurrentBuildPortalRootReport(context))
+    }
+
+    @Test
     fun handshakeOnlyStartsThePortalService() {
         val command = ModuleActivation.portalHandshakeCommand()
         assertTrue(command.contains("com.miui.contentextension/"))

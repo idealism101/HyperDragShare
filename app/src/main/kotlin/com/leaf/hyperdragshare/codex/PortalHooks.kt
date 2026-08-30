@@ -50,6 +50,10 @@ internal object PortalHooks {
     @Volatile
     private var rootTouchSource: RootTouchSource? = null
 
+    /** Set by the first root pointer, which is when the root stream may take authority. */
+    @Volatile
+    private var rootPointerSeen = false
+
     @Volatile
     private var rootAuthorityLogged = false
 
@@ -369,7 +373,7 @@ internal object PortalHooks {
             "MIUI motion action=" + MotionEvent.actionToString(event.actionMasked)
                 + " point=" + event.rawX.roundToInt() + "," + event.rawY.roundToInt(),
         )
-        if (hasReadyRootSource()) {
+        if (hasLiveRootSource()) {
             event.recycle()
             if (!rootAuthorityLogged) {
                 rootAuthorityLogged = true
@@ -393,6 +397,13 @@ internal object PortalHooks {
         val source = rootTouchSource
         return source != null && source.isReady()
     }
+
+    /**
+     * Whether the root stream is not just open but actually producing pointers. An open device
+     * that has not emitted anything yet must not take authority away from the host events: the
+     * first drag of a portal process opens the device while that drag is already under way.
+     */
+    private fun hasLiveRootSource(): Boolean = hasReadyRootSource() && rootPointerSeen
 
     private fun reportPortalActivation(context: Context): Boolean {
         val reported = ModuleActivation.reportInjected(context)
@@ -425,6 +436,7 @@ internal object PortalHooks {
             return
         }
         rootAuthorityLogged = false
+        rootPointerSeen = false
         hostCancelIgnoredLogged = false
         controlIgnoredLogged = false
         clearDeferredHostCalls()
@@ -494,6 +506,7 @@ internal object PortalHooks {
     }
 
     private fun dispatchRootPointer(action: Int, x: Float, y: Float, eventTime: Long) {
+        rootPointerSeen = true
         DragShareLog.d(
             TAG,
             "root pointer action=" + MotionEvent.actionToString(action)
@@ -514,7 +527,7 @@ internal object PortalHooks {
     private fun deferHostCallIfRootDragActive(chain: Chain, kind: String): Boolean {
         synchronized(DEFERRED_HOST_LOCK) {
             val current = controller
-            if (current == null || !current.isActive() || !hasReadyRootSource()) {
+            if (current == null || !current.isActive() || !hasLiveRootSource()) {
                 return false
             }
             for (existing in DEFERRED_HOST_CALLS) {

@@ -119,6 +119,20 @@ internal object ModuleActivation {
         )
     }
 
+    /**
+     * Whether the portal answered the root question for this build at all, whatever the answer.
+     * Only the portal process can probe its own grant, so a denied grant is a real answer that
+     * the UI must not keep waiting on.
+     */
+    fun hasCurrentBuildPortalRootReport(context: Context?): Boolean {
+        if (context == null) {
+            return false
+        }
+        return matchesCurrentBuild(
+            activationPreferences(context).getLong(KEY_PORTAL_ROOT_VERSION, -1L),
+        )
+    }
+
     fun isCurrentBuildPortalRootGranted(context: Context?): Boolean {
         if (context == null) {
             return false

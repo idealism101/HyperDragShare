@@ -285,8 +285,11 @@ internal object ActivationMonitor {
         var injected = frameworkInjection == PortalInjectionState.Injected
             || withContext(Dispatchers.IO) { ModuleActivation.isCurrentBuildInjected(context) }
         var portalRootGranted = ModuleActivation.isCurrentBuildPortalRootGranted(context)
+        // A denied grant is an answer, not a missing one: re-running the handshake for it would
+        // start the portal service over root and then wait out the report timeout for nothing.
+        var portalRootReported = ModuleActivation.hasCurrentBuildPortalRootReport(context)
         var handshakeInjection: PortalInjectionState? = null
-        if (!injected || !portalRootGranted) {
+        if (!injected || !portalRootReported) {
             // The rows the framework already answered are filled in while the handshake runs, so a
             // cold portal does not leave the whole card on "检测中" for twelve seconds. A
             // re-detection keeps its previous result instead.
@@ -319,8 +322,15 @@ internal object ActivationMonitor {
                     )
                 }
                 // The portal probes its own root grant on a second thread and answers again.
-                portalRootGranted = awaitPortalReport(context, PORTAL_ROOT_REPORT_TIMEOUT_MS) {
-                    ModuleActivation.isCurrentBuildPortalRootGranted(context)
+                if (!portalRootReported) {
+                    portalRootReported = awaitPortalReport(
+                        context,
+                        PORTAL_ROOT_REPORT_TIMEOUT_MS,
+                    ) {
+                        ModuleActivation.hasCurrentBuildPortalRootReport(context)
+                    }
+                    portalRootGranted =
+                        ModuleActivation.isCurrentBuildPortalRootGranted(context)
                 }
             } else if (frameworkInjection == null) {
                 // Without a framework binder a stopped portal has to be told apart from a live
@@ -357,6 +367,7 @@ internal object ActivationMonitor {
             LOG_TAG,
             "portal activation injected=" + injected
                 + " portalRoot=" + portalRootGranted
+                + " portalRootReported=" + portalRootReported
                 + " injection=" + portalInjection
                 + " framework=" + (frameworkLabel ?: "unavailable")
                 + " scope=" + scopeIncludesPortal

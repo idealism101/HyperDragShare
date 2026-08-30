@@ -1,6 +1,6 @@
 # HyperDragShare 完整实现说明
 
-本文记录 HyperDragShare `1.8.1`（`versionCode 76`）的当前完整实现、关键兼容性选择和已验证
+本文记录 HyperDragShare `1.8.2`（`versionCode 77`）的当前完整实现、关键兼容性选择和已验证
 设备参数。实现目标是：传送门识别长按文字或图片后，在手指附近立即显示预览；同一根手指
 无需抬起即可继续拖动；简洁和现代样式可按设置出现在上、下、左、右或近手侧，流光样式在底部显示横向分享菜单，环形样式可从左右边缘展开半圆
 菜单；停留在可滚动热区时自动滚动；松手落在目标上时直接分享。
@@ -191,7 +191,13 @@ WindowManager 不会把正在进行的手势重新定向给新窗口。因此，
    `ABS_MT_POSITION_X/Y`、`BTN_TOUCH`，并在 `SYN_REPORT` 时提交一帧。
 6. 选择第一个具有完整坐标的活动 slot 输出 MOVE；所有 slot 结束并出现 tracking-id/按键
    抬起时，用最后坐标输出 ACTION_UP。
-7. `GestureMath.mapRawPoint()` 先归一化，再按屏幕真实像素及 rotation 0/1/2/3 映射。
+7. 设备打开的瞬间手指往往已经按下（传送门是在第一次长按时才创建服务、才打开设备），此时
+   evdev 不会补发已经发生过的 `ABS_MT_TRACKING_ID` 和 `BTN_TOUCH` 边沿，只有后续的坐标帧。
+   因此 `RootTouchSource` 在打开设备后调用 `EvdevTouchParser.adoptInProgressGesture()`：
+   下一帧只要有完整坐标且没有看到按键抬起，就以该坐标作为 ACTION_DOWN 接管这次手势，并为该
+   slot 写入占位 tracking id，使后续的抬起与第二指判断照常工作。这个许可只对一次手势有效，
+   手势一旦开始就清除，抬起后的坐标帧不会伪造第二次按下。
+8. `GestureMath.mapRawPoint()` 先归一化，再按屏幕真实像素及 rotation 0/1/2/3 映射。
 
 当前实机探测值是：
 
@@ -208,8 +214,11 @@ ABS 最大值：121999 x 265599
 
 `MiuiMotionSource` 通过反射注册
 `MiuiInputManager.MiuiMotionEventListener`。在目标 ROM 上可能出现“注册成功但不下发事件”，
-所以它只作为 root 未就绪时的回退。root 一旦 ready，`PortalHooks.dispatchMotion()` 会明确
-丢弃 MIUI 事件。
+所以它只作为 root 未就绪时的回退。仲裁看的不是“设备已打开”而是“root 流真的出过事件”：
+`PortalHooks.dispatchMotion()` 只在 `hasReadyRootSource()` 且已收到过至少一个 root 指针
+（`rootPointerSeen`）时才丢弃 MIUI 事件，`cancelTask`/`257` 的延迟重放也用同一条件。否则
+传送门进程第一次拖拽时会出现“设备刚打开、root 流还没产出任何事件”的窗口，MIUI 事件被丢掉而
+root 事件还没来，预览就会停在原地不跟手。
 
 root 输入线程使用阻塞式读取，不是高频定时轮询；它随传送门服务生命周期存在，主要开销是一个
 等待内核事件的线程，空闲时不会持续计算坐标。近手方向的旋转向量/加速度传感器则只在启用
@@ -497,7 +506,10 @@ binder 重放给新监听器，因此注册时机不敏感。`ActivationMonitor`
 `com.miui.contentextension/.services.TextContentExtensionService`（若服务已在运行，其
 `onStartCommand` Hook 也会再次上报）。等待上报不再轮询，而是注册
 `ModuleActivation.activationPreferences()` 的 `OnSharedPreferenceChangeListener`：注入报告最多等
-`12 s`（冷启动传送门需要几秒），确认注入后再最多等 `6 s` 拿传送门 Root 探测的第二份报告。若注入
+`12 s`（冷启动传送门需要几秒），确认注入后再最多等 `6 s` 拿传送门 Root 探测的第二份报告 ——
+但只在传送门还没回答过这个问题时才等。传送门的 root 探测结果无论成败都会上报，
+`ModuleActivation.hasCurrentBuildPortalRootReport()` 因此能把“已回答未授权”和“还没回答”分开：
+当前版本已经答过未授权时不再用 root 执行 `am startservice`、也不再等那 `6 s`，直接显示不可用。若注入
 报告始终没来，就用 root `pidof com.miui.contentextension` 判断传送门是否根本没起来，从而把
 “传送门未运行”和“未注入”分开显示；框架已经回答注入状态时不需要这一步。握手期间已经由框架回答
 的检测项会先发布到卡片上，注入一旦确认也立即发布，因此冷启动传送门时整张卡片不会停在“检测中”
@@ -879,12 +891,13 @@ $apk.Dispose()
 负责把 `java_init.list` 的内容同步成混淆后的名字，因此发布前要跑一次 release 并确认该文件里写的是
 混淆后的入口类（当前为一个短名），而不是空文件或被删掉。
 
-当前 87 个单元测试覆盖：当前版本注入握手与限定服务启动命令、检测项的来源顺序/“检测中”占位/
+当前 93 个单元测试覆盖：当前版本注入握手与限定服务启动命令、检测项的来源顺序/“检测中”占位/
 传送门未运行与未注入的区分/状态卡来源文案、传送门原浮窗在模块预览挂窗前的
 抑制、底部触发边界、左右滚动方向、边缘深度速度渐变、
 预览位置夹取、流光进度与项目缩放、近手方向映射、环形菜单左右触发/贴边半圆/自然项目顺序、
 新增外观设置和现代原生局部模糊参数的默认值/范围裁剪、原生 Window 局部模糊的圆角背景/降级判定、现代预览按文字与图片尺寸自适应并限制为屏宽三分之一、独立 Compose 悬浮窗的 ViewTree owner 传递、原始坐标与旋转映射、
-触摸设备发现、UUID URI 解析、设置默认值/范围/内容开关/目标规则以及本地图片时间文件名；
+触摸设备发现、设备中途打开时对已按下手势的接管（含未武装时不接管、只接管一次、接管后第二指
+仍然取消）、传送门 root 未授权是一个答案而不是缺报告、UUID URI 解析、设置默认值/范围/内容开关/目标规则以及本地图片时间文件名；
 新增测试还覆盖内容获取模式迁移、evdev DOWN/MOVE/UP/CANCEL、长按异步失效、节点文字/图片
 候选优先级、截图区域的扩边/缩放/夹取、日志等级/保存位置的 Provider Bundle 同步，以及背景锁开关的 Provider Bundle 同步、root 服务返回
 解析、当前 ROM DEX 的动态 Binder 事务解析与 `InputMonitor` 释放。API 102 迁移新增的覆盖是

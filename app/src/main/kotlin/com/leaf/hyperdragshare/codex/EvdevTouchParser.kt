@@ -23,6 +23,7 @@ internal class EvdevTouchParser(private val listener: Listener) {
     private var multiTouchDetected = false
     private var frameChanged = false
     private var ignoreUntilAllPointersUp = false
+    private var adoptInProgress = false
     private var lastX = Float.NaN
     private var lastY = Float.NaN
 
@@ -46,12 +47,23 @@ internal class EvdevTouchParser(private val listener: Listener) {
         }
     }
 
+    /**
+     * Lets the next frame start a gesture from a touch that was already down when the device was
+     * opened. Attaching mid gesture never sees the tracking start or the `BTN_TOUCH` edge that
+     * normally begins one, so without this the whole gesture in progress would be dropped and the
+     * pointer would only be followed again after the user lifted and pressed once more.
+     */
+    fun adoptInProgressGesture() {
+        adoptInProgress = true
+    }
+
     fun cancel() {
         if (gestureActive && lastX.isFinite() && lastY.isFinite()) {
             listener.onFrame(MotionEvent.ACTION_CANCEL, lastX, lastY)
         }
         resetGesture()
         ignoreUntilAllPointersUp = false
+        adoptInProgress = false
         resetSlots()
     }
 
@@ -105,11 +117,24 @@ internal class EvdevTouchParser(private val listener: Listener) {
         if (candidate < 0 && buttonTouchSeen && buttonTouchDown) {
             candidate = firstSlotWithCoordinates()
         }
+        // A touch that was already down reports no tracking id and no button edge of its own, so
+        // a bare coordinate pair is the only evidence it exists. A released button rules it out.
+        val adopting = !gestureActive && adoptInProgress && candidate < 0 && trackedCount == 0 &&
+            !(buttonTouchSeen && !buttonTouchDown)
+        if (adopting) {
+            candidate = firstSlotWithCoordinates()
+        }
 
         if (!gestureActive) {
             if (trackedCount > 1) {
                 ignoreUntilAllPointersUp = true
-            } else if (candidate >= 0 && (sawTrackingStart || buttonDownEdge)) {
+            } else if (candidate >= 0 && (sawTrackingStart || buttonDownEdge || adopting)) {
+                if (candidate >= 0 && trackingId[candidate] < 0) {
+                    // The real tracking id was reported before the device was opened, so a
+                    // placeholder keeps the lift and second finger checks below working until the
+                    // kernel reports -1 for this slot.
+                    trackingId[candidate] = ADOPTED_TRACKING_ID
+                }
                 primarySlot = candidate
                 gestureActive = true
                 setLast(candidate)
@@ -200,6 +225,10 @@ internal class EvdevTouchParser(private val listener: Listener) {
         slot >= 0 && slot < MAX_SLOTS && slotX[slot].isFinite() && slotY[slot].isFinite()
 
     private fun finishFrame() {
+        if (gestureActive) {
+            // Once a gesture is being tracked the parser is in step with the kernel again.
+            adoptInProgress = false
+        }
         frameChanged = false
         primaryLifted = false
         multiTouchDetected = false
@@ -256,5 +285,8 @@ internal class EvdevTouchParser(private val listener: Listener) {
         const val ABS_MT_TRACKING_ID = 57
 
         private const val MAX_SLOTS = 16
+
+        /** Stands in for the tracking id of an adopted touch, which was never reported. */
+        private const val ADOPTED_TRACKING_ID = Int.MAX_VALUE
     }
 }

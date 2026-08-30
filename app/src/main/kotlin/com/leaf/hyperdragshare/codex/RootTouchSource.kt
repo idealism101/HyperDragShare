@@ -107,6 +107,9 @@ internal class RootTouchSource(private val context: Context, private val listene
 
             val stream = openDevice(devicePath)
             inputStream = stream
+            // The portal opens the device on the first long press, so the finger that started the
+            // drag is usually already down by now and its gesture has to be adopted.
+            parser.adoptInProgressGesture()
             ready = true
             val metrics = currentDisplayMetrics()
             log(
