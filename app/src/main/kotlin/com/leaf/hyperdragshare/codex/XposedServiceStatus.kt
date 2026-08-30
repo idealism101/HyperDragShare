@@ -109,9 +109,13 @@ internal object XposedServiceStatus {
             "portal targets=" + portalTargets.joinToString { describe(it) }
                 + " otherTargets=" + targets.size.minus(portalTargets.size),
         )
+        // `state` is the framework's own verdict and the only thing worth trusting here: its
+        // documentation calls `loadedVersionCode` a diagnostic value and says the framework may
+        // decide staleness by a stronger code identity, so comparing version codes would report a
+        // process that still runs old code as up to date. RELOADING and FAILED are old code too.
         return when {
             portalTargets.isEmpty() -> PortalInjectionState.Stopped
-            portalTargets.any { it.loadedVersionCode == BuildConfig.VERSION_CODE.toLong() } ->
+            portalTargets.any { it.state == HookedTarget.State.UP_TO_DATE } ->
                 PortalInjectionState.Injected
             else -> PortalInjectionState.Stale
         }

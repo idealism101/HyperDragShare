@@ -175,6 +175,21 @@ class ActivationChecksTest {
     }
 
     @Test
+    fun aLivePortalWithoutTheModuleReadsNotInjectedRatherThanStopped() {
+        // The framework lists no target for a portal that loaded no module, which looks exactly
+        // like a stopped portal until the handshake has looked for the process itself.
+        assertEquals(
+            PortalInjectionState.NotInjected,
+            portalInjectionState(
+                scopeIncludesPortal = true,
+                injected = false,
+                frameworkInjection = PortalInjectionState.Stopped,
+                handshakeInjection = PortalInjectionState.NotInjected,
+            ),
+        )
+    }
+
+    @Test
     fun anUnknownScopeLeavesTheFrameworkAndTheHandshakeToDecide() {
         assertEquals(
             PortalInjectionState.Injected,

@@ -13,10 +13,18 @@ internal object ModuleActivation {
     const val METHOD_REPORT_INJECTED = "report_injected"
     const val EXTRA_VERSION_CODE = "version_code"
     const val EXTRA_PORTAL_ROOT_GRANTED = "portal_root_granted"
+    const val EXTRA_PORTAL_PID = "portal_pid"
 
     private const val MAX_OUTPUT_CHARS = 2048
     private const val PREFS_NAME = "module_activation"
     private const val KEY_INJECTED_VERSION = "injected_version"
+
+    /**
+     * The last report from any portal process, matching build or not. A report for another build
+     * is not proof of injection, but it does name the process that is still running that build.
+     */
+    private const val KEY_LAST_REPORT_VERSION = "last_report_version"
+    private const val KEY_LAST_REPORT_PID = "last_report_pid"
     private const val KEY_PORTAL_ROOT_VERSION = "portal_root_version"
     private const val KEY_PORTAL_ROOT_GRANTED = "portal_root_granted"
 
@@ -90,6 +98,9 @@ internal object ModuleActivation {
         if (portalContext == null) {
             return false
         }
+        // Every report names the process it came from, including the root one: the module needs it
+        // to tell a portal that is still running an older build from one that is not running.
+        extras.putInt(EXTRA_PORTAL_PID, android.os.Process.myPid())
         return try {
             portalContext.contentResolver.call(
                 ImageStagingClient.BASE_URI,
@@ -105,6 +116,15 @@ internal object ModuleActivation {
 
     fun recordInjected(moduleContext: Context, extras: Bundle?) {
         val reportedVersion = extras?.getLong(EXTRA_VERSION_CODE, -1L) ?: -1L
+        if (reportedVersion > 0L) {
+            // Kept for every report: a portal still running an older build is the difference
+            // between 旧版本仍在运行 and 未注入, and only the report names its process.
+            activationPreferences(moduleContext)
+                .edit()
+                .putLong(KEY_LAST_REPORT_VERSION, reportedVersion)
+                .putInt(KEY_LAST_REPORT_PID, extras?.getInt(EXTRA_PORTAL_PID, -1) ?: -1)
+                .apply()
+        }
         if (!matchesCurrentBuild(reportedVersion)) {
             return
         }
@@ -234,9 +254,31 @@ internal object ModuleActivation {
             runRootCommand(PORTAL_SERVICE_COMMAND, COMMAND_TIMEOUT_SECONDS)
 
     /** Whether a portal process is alive at all; only root may look at another app's processes. */
-    fun isPortalRunning(): Boolean {
+    fun isPortalRunning(): Boolean = portalPids().isNotEmpty()
+
+    /** The live portal process ids, empty when the portal is not running or root refused. */
+    fun portalPids(): List<Int> {
         val pids = runRootCommandOutput(PORTAL_PROCESS_COMMAND, COMMAND_TIMEOUT_SECONDS)
-        return pids != null && pids.trim().isNotEmpty()
+            ?: return emptyList()
+        return pids.split(Regex("\\s+"))
+            .mapNotNull { it.trim().toIntOrNull() }
+    }
+
+    /**
+     * The process id of a portal that reported a build other than the running one, or null when
+     * the last report was for this build or there was none. A portal process loads the module its
+     * process started with, so such a process stays on the old code until it is restarted.
+     */
+    fun staleReportPid(context: Context?): Int? {
+        if (context == null) {
+            return null
+        }
+        val preferences = activationPreferences(context)
+        val version = preferences.getLong(KEY_LAST_REPORT_VERSION, -1L)
+        if (version <= 0L || matchesCurrentBuild(version)) {
+            return null
+        }
+        return preferences.getInt(KEY_LAST_REPORT_PID, -1).takeIf { it > 0 }
     }
 
     fun portalHandshakeCommand(): String = PORTAL_SERVICE_COMMAND

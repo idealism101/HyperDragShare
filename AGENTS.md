@@ -9,7 +9,7 @@
 ## 工程基线
 
 - 工程类型：Android LSPosed 模块，源码全 Kotlin（JVM 17），minSdk 33，targetSdk 34，compileSdk 37。
-- 当前版本：`1.8.6`，`versionCode 81`。
+- 当前版本：`1.8.9`，`versionCode 84`。
 - 已验证宿主：传送门 `4.2.1`，包名 `com.miui.contentextension`。
 - Xposed API：libxposed 102（`io.github.libxposed:api`），入口为
   `com.leaf.hyperdragshare.codex.DragShareModule`，模块元数据在
@@ -62,8 +62,13 @@
     Root 输入），其中“LSPosed 注入”只能是检测中/已注入当前版本/旧版本仍在运行/传送门未运行/
     未注入。方括号内两项来自框架 binder（`XposedServiceStatus.frameworkLabel()` 与
     `getScope()`），框架没有回应时整行不显示，绝不能当成失败项。注入结论优先取
-    `getRunningTargets()` 中传送门进程的 `loadedVersionCode`；框架不回应或该调用抛异常时才退回
-    握手路径。传送门 Hook 必须通过
+    `getRunningTargets()` 中传送门进程的 `HookedTarget.getState()`：`UP_TO_DATE` 才是已注入当前版本，
+    `STALE`/`RELOADING`/`FAILED` 都是旧代码。不要改回比较 `loadedVersionCode` —— API 文档明确说它只是
+    诊断值、框架可能用更强的代码标识判定新旧。框架不回应或该调用抛异常时才退回握手路径；框架报
+    “未运行”而 `pidof` 又能看到传送门进程时，结论是未注入而不是传送门未运行。LSPosed 在模块被替换后
+    会把该进程从 `getRunningTargets()` 移除而不是报 `STALE`，所以每份上报都要带 `EXTRA_PORTAL_PID`，
+    版本不匹配的上报也要记进 `last_report_version`/`last_report_pid`：那个 pid 还活着就是
+    “旧版本仍在运行”，不要为它启动传送门或等上报超时。传送门 Hook 必须通过
     `ModuleActivation.reportInjected()` 上报其编译时 `BuildConfig.VERSION_CODE`；不要把普通的
     `get_settings` 调用当作注入证明，否则 APK 更新后仍运行旧代码的传送门进程会被误报为已激活。
     上报时机是传送门任一进程的 `Instrumentation.callApplicationOnCreate`，不要退回成只在

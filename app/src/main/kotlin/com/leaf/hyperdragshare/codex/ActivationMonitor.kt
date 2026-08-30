@@ -168,8 +168,12 @@ internal fun portalInjectionState(
 ): PortalInjectionState = when {
     scopeIncludesPortal == false -> PortalInjectionState.NotInjected
     injected -> PortalInjectionState.Injected
+    // The handshake looked at the portal after trying to start it, so it knows something the
+    // framework snapshot taken before that does not: a portal that is running yet loads no module
+    // is 未注入, not 传送门未运行.
+    handshakeInjection != null -> handshakeInjection
     frameworkInjection != null -> frameworkInjection
-    else -> handshakeInjection ?: PortalInjectionState.NotInjected
+    else -> PortalInjectionState.NotInjected
 }
 
 internal object ActivationMonitor {
@@ -349,14 +353,32 @@ internal object ActivationMonitor {
         // that has to be relied on is asked for again and identified by this sequence.
         val rootSequenceBefore = ModuleActivation.portalRootReportSequence(context)
         var handshakeInjection: PortalInjectionState? = null
-        // A portal process runs whatever module build it loaded when it started, so one that the
-        // framework reports on a different build cannot be talked into reporting this one. Both
-        // the root spawn and the report timeouts would be spent for nothing; the row says
-        // 旧版本仍在运行 and asks for a portal restart instead.
-        val staleFramework = frameworkInjection == PortalInjectionState.Stale
+        // A portal process runs whatever module build it loaded when it started, so one that is
+        // on another build cannot be talked into reporting this one. Both the root spawn and the
+        // report timeouts would be spent for nothing; the row says 旧版本仍在运行 and asks for a
+        // portal restart instead.
+        var portalRunsOldBuild = frameworkInjection == PortalInjectionState.Stale
+        if (!injected && !portalRunsOldBuild && scopeIncludesPortal != false) {
+            // LSPosed drops a process from getRunningTargets() once the module it loaded has been
+            // replaced, so a portal still running the previous build looks stopped to the
+            // framework. Its own report named that process, so a live pid of the reporting process
+            // settles it without starting anything and without waiting for a report the old code
+            // can no longer send.
+            val stalePid = withContext(Dispatchers.IO) { ModuleActivation.staleReportPid(context) }
+            if (stalePid != null &&
+                withContext(Dispatchers.IO) { ModuleActivation.portalPids() }.contains(stalePid)
+            ) {
+                portalRunsOldBuild = true
+                handshakeInjection = PortalInjectionState.Stale
+                DragShareLog.i(
+                    LOG_TAG,
+                    "portal pid=$stalePid still runs an older build; a restart is needed",
+                )
+            }
+        }
         // Starting a portal that the scope excludes cannot produce a report either: the framework
         // will not load the module into it.
-        if (!injected && !staleFramework && scopeIncludesPortal != false) {
+        if (!injected && !portalRunsOldBuild && scopeIncludesPortal != false) {
             // The rows the framework already answered are filled in while the portal starts, so a
             // cold portal does not leave the whole card on "检测中". A re-detection keeps its
             // previous result instead.
@@ -386,9 +408,10 @@ internal object ActivationMonitor {
                 // one would only spend the timeout.
                 DragShareLog.w(LOG_TAG, "unable to reach the portal; skipping the report waits")
             }
-            if (!injected && frameworkInjection == null) {
-                // Without a framework binder a stopped portal has to be told apart from a live one
-                // that refuses to load the module.
+            if (!injected) {
+                // A portal that answered nothing has to be told apart from one that is not running
+                // at all -- including when the framework listed no target for it, which is what a
+                // live portal without the module looks like from the framework's side.
                 handshakeInjection = if (portalInstalled == true
                     && !withContext(Dispatchers.IO) { ModuleActivation.isPortalRunning() }
                 ) {

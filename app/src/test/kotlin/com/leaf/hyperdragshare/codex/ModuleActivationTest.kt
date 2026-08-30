@@ -92,6 +92,33 @@ class ModuleActivationTest {
     }
 
     @Test
+    fun aReportFromAnotherBuildNamesTheProcessThatStillRunsIt() {
+        val context = RuntimeEnvironment.getApplication()
+        ModuleActivation.activationPreferences(context).edit().clear().commit()
+        assertNull(ModuleActivation.staleReportPid(context))
+
+        val older = Bundle()
+        older.putLong(ModuleActivation.EXTRA_VERSION_CODE, BuildConfig.VERSION_CODE - 1L)
+        older.putInt(ModuleActivation.EXTRA_PORTAL_PID, 4321)
+        ModuleActivation.recordInjected(context, older)
+
+        // The report proves nothing about the running build, but it does say which process to look
+        // for: finding it alive is the difference between 旧版本仍在运行 and 未注入.
+        assertFalse(ModuleActivation.isCurrentBuildInjected(context))
+        assertEquals(4321, ModuleActivation.staleReportPid(context))
+
+        val current = Bundle()
+        current.putLong(
+            ModuleActivation.EXTRA_VERSION_CODE,
+            BuildConfig.VERSION_CODE.toLong(),
+        )
+        current.putInt(ModuleActivation.EXTRA_PORTAL_PID, 4322)
+        ModuleActivation.recordInjected(context, current)
+        assertTrue(ModuleActivation.isCurrentBuildInjected(context))
+        assertNull(ModuleActivation.staleReportPid(context))
+    }
+
+    @Test
     fun everyRootReportMovesTheSequenceSoAFreshAnswerIsRecognisable() {
         val context = RuntimeEnvironment.getApplication()
         ModuleActivation.activationPreferences(context).edit().clear().commit()
