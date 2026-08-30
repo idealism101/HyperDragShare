@@ -3,6 +3,7 @@ package com.leaf.hyperdragshare.codex
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -226,6 +227,7 @@ internal object ActivationMonitor {
 
         // Forking `su` and waiting for the framework binder do not depend on each other, so
         // both start before either answer is read. Only the portal branch needs the binder.
+        val startedAt = SystemClock.elapsedRealtime()
         val (rootGranted, service) = coroutineScope {
             val serviceProbe = if (accessibilityMode) {
                 null
@@ -239,8 +241,10 @@ internal object ActivationMonitor {
             }
             granted to if (granted) serviceProbe?.await() else null
         }
+        val probeMs = SystemClock.elapsedRealtime() - startedAt
         if (!rootGranted) {
             publish(ActivationLevel.Inactive, rootGranted = false)
+            DragShareLog.i(LOG_TAG, "activation stopped at the root probe after ${probeMs}ms")
             return
         }
         if (accessibilityMode) {
@@ -281,6 +285,10 @@ internal object ActivationMonitor {
                 XposedServiceStatus.portalInjection(service, PORTAL_PACKAGE)
             }
         }
+        val frameworkMs = SystemClock.elapsedRealtime() - startedAt - probeMs
+        var handshakeMs = 0L
+        var injectionWaitMs = 0L
+        var rootWaitMs = 0L
 
         var injected = frameworkInjection == PortalInjectionState.Injected
             || withContext(Dispatchers.IO) { ModuleActivation.isCurrentBuildInjected(context) }
@@ -289,7 +297,12 @@ internal object ActivationMonitor {
         // start the portal service over root and then wait out the report timeout for nothing.
         var portalRootReported = ModuleActivation.hasCurrentBuildPortalRootReport(context)
         var handshakeInjection: PortalInjectionState? = null
-        if (!injected || !portalRootReported) {
+        // A portal process runs whatever module build it loaded when it started, so one that the
+        // framework reports on a different build cannot be talked into reporting this one. Both
+        // the root `am startservice` and the report timeouts would be spent for nothing; the row
+        // says 旧版本仍在运行 and asks for a portal restart instead.
+        val staleFramework = frameworkInjection == PortalInjectionState.Stale
+        if ((!injected || !portalRootReported) && !staleFramework) {
             // The rows the framework already answered are filled in while the handshake runs, so a
             // cold portal does not leave the whole card on "检测中" for twelve seconds. A
             // re-detection keeps its previous result instead.
@@ -303,11 +316,15 @@ internal object ActivationMonitor {
             }
             // The portal only carries the hook while one of its processes lives, so a stopped
             // portal is started over root instead of being reported as not injected.
+            var mark = SystemClock.elapsedRealtime()
             withContext(Dispatchers.IO) { ModuleActivation.requestPortalInjectionHandshake() }
+            handshakeMs = SystemClock.elapsedRealtime() - mark
             if (!injected) {
+                mark = SystemClock.elapsedRealtime()
                 injected = awaitPortalReport(context, PORTAL_INJECTION_TIMEOUT_MS) {
                     ModuleActivation.isCurrentBuildInjected(context)
                 }
+                injectionWaitMs = SystemClock.elapsedRealtime() - mark
             }
             if (injected) {
                 // The injection is settled by now, so its row is published before the second
@@ -323,12 +340,14 @@ internal object ActivationMonitor {
                 }
                 // The portal probes its own root grant on a second thread and answers again.
                 if (!portalRootReported) {
+                    val rootMark = SystemClock.elapsedRealtime()
                     portalRootReported = awaitPortalReport(
                         context,
                         PORTAL_ROOT_REPORT_TIMEOUT_MS,
                     ) {
                         ModuleActivation.hasCurrentBuildPortalRootReport(context)
                     }
+                    rootWaitMs = SystemClock.elapsedRealtime() - rootMark
                     portalRootGranted =
                         ModuleActivation.isCurrentBuildPortalRootGranted(context)
                 }
@@ -372,6 +391,17 @@ internal object ActivationMonitor {
                 + " framework=" + (frameworkLabel ?: "unavailable")
                 + " scope=" + scopeIncludesPortal
                 + " frameworkInjection=" + frameworkInjection,
+        )
+        // Detection latency is only ever explained by one of these five steps, so each one is
+        // reported instead of just the total.
+        DragShareLog.i(
+            LOG_TAG,
+            "activation timing probe=" + probeMs
+                + "ms framework=" + frameworkMs
+                + "ms handshake=" + handshakeMs
+                + "ms injectionWait=" + injectionWaitMs
+                + "ms portalRootWait=" + rootWaitMs
+                + "ms total=" + (SystemClock.elapsedRealtime() - startedAt) + "ms",
         )
     }
 

@@ -1,6 +1,6 @@
 # HyperDragShare 完整实现说明
 
-本文记录 HyperDragShare `1.8.2`（`versionCode 77`）的当前完整实现、关键兼容性选择和已验证
+本文记录 HyperDragShare `1.8.3`（`versionCode 78`）的当前完整实现、关键兼容性选择和已验证
 设备参数。实现目标是：传送门识别长按文字或图片后，在手指附近立即显示预览；同一根手指
 无需抬起即可继续拖动；简洁和现代样式可按设置出现在上、下、左、右或近手侧，流光样式在底部显示横向分享菜单，环形样式可从左右边缘展开半圆
 菜单；停留在可滚动热区时自动滚动；松手落在目标上时直接分享。
@@ -499,7 +499,9 @@ binder 重放给新监听器，因此注册时机不敏感。`ActivationMonitor`
 版本时才写入 `module_activation`。主页只有“已注入 + 传送门 Root 探测通过”才显示已激活；有 Root
 但任一检查未通过时状态卡显示“部分激活”，具体是哪一项未通过由“检测项”卡片给出。APK 更新但传送门
 仍保留旧进程时，旧版本值不会匹配：框架能回答时“LSPosed 注入”显示“旧版本仍在运行”，否则显示
-“未注入”，直到传送门以新模块代码重启。普通 `get_settings` 不更新此标记。
+“未注入”，直到传送门以新模块代码重启。此时握手整段被跳过：进程加载的模块版本在它启动时就定死了，
+`am startservice` 只会走到旧代码的 `onStartCommand`，上报的仍是旧 `versionCode` 并被 Provider 拒收，
+所以等满 `12 s` 注入超时是纯浪费 —— 框架报出“旧版本”时直接出结论。普通 `get_settings` 不更新此标记。
 
 框架已经证明当前版本已注入、且传送门 Root 也已上报时，检测到此结束。只要这两项还缺一项
 （包括根本没有框架 binder 的情况），主页就会用 root 执行 `am startservice`，目标仅为
@@ -646,6 +648,10 @@ Binder transaction code、触摸设备节点或分辨率。root 调用只接受�
 文件”两个保存位置。默认值为信息级别和系统日志，因此升级不会改变既有 `adb logcat` 排查路径。
 禁用后模块自身不再输出运行日志；信息级别保留常规生命周期、分享、输入源和错误记录；调试级别
 额外记录每个输入源仲裁、传送门回调、root evdev 原始起始帧与解析帧。
+`DragShare/Activation` 在每次检测结束时输出一行 `activation timing`，分别给出 Root 探测与框架
+binder 并发段、框架三问、`am startservice` 握手、注入等待、传送门 Root 等待各自耗时和总耗时；
+Root 未授权而提前结束时输出 `activation stopped at the root probe after …ms`。检测偏慢时先看这行，
+不要凭感觉猜是哪一段慢。
 
 文件模式由模块和传送门进程各自通过其 root shell 追加到
 `/data/local/tmp/HyperDragShare/hyperdragshare.log`，目录权限为 root 专用。单进程写入超过
