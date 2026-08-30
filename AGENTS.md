@@ -9,7 +9,7 @@
 ## 工程基线
 
 - 工程类型：Android LSPosed 模块，源码全 Kotlin（JVM 17），minSdk 33，targetSdk 34，compileSdk 37。
-- 当前版本：`1.8.3`，`versionCode 78`。
+- 当前版本：`1.8.4`，`versionCode 79`。
 - 已验证宿主：传送门 `4.2.1`，包名 `com.miui.contentextension`。
 - Xposed API：libxposed 102（`io.github.libxposed:api`），入口为
   `com.leaf.hyperdragshare.codex.DragShareModule`，模块元数据在
@@ -84,7 +84,9 @@
     或返回主页不得重新探测，只有 Activity 真正的 `ON_START`（需过滤注册时同步重放的那一次）、
     内容获取方式变化或点击状态卡片才允许重新检测。等待传送门上报只能观察
     `ModuleActivation.activationPreferences()` 的变更回调，不要改回轮询；冷启动传送门失败时用
-    `pidof` 区分“传送门未运行”和“未注入”。框架 binder 已经回答的检测项要立即填进卡片，
+    `pidof` 区分“传送门未运行”和“未注入”。冷启动传送门优先用 root 读它自己的
+    `SwitchControlProvider`（`am startservice` 在传送门无进程时会被 HyperOS 的后台启动规则拒绝，
+    退出码 255），`am startservice` 只作为第二次尝试；两条路都失败时不要再等上报超时。框架 binder 已经回答的检测项要立即填进卡片，
     不能让整张卡片等满握手超时。
 
 ## 代码地图

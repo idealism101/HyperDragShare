@@ -1,6 +1,6 @@
 # HyperDragShare 完整实现说明
 
-本文记录 HyperDragShare `1.8.3`（`versionCode 78`）的当前完整实现、关键兼容性选择和已验证
+本文记录 HyperDragShare `1.8.4`（`versionCode 79`）的当前完整实现、关键兼容性选择和已验证
 设备参数。实现目标是：传送门识别长按文字或图片后，在手指附近立即显示预览；同一根手指
 无需抬起即可继续拖动；简洁和现代样式可按设置出现在上、下、左、右或近手侧，流光样式在底部显示横向分享菜单，环形样式可从左右边缘展开半圆
 菜单；停留在可滚动热区时自动滚动；松手落在目标上时直接分享。
@@ -504,9 +504,15 @@ binder 重放给新监听器，因此注册时机不敏感。`ActivationMonitor`
 所以等满 `12 s` 注入超时是纯浪费 —— 框架报出“旧版本”时直接出结论。普通 `get_settings` 不更新此标记。
 
 框架已经证明当前版本已注入、且传送门 Root 也已上报时，检测到此结束。只要这两项还缺一项
-（包括根本没有框架 binder 的情况），主页就会用 root 执行 `am startservice`，目标仅为
+（包括根本没有框架 binder 的情况），主页就会用 root 把传送门叫起来。这里**先**读它自己的
+`content://com.miui.contentextension.provider.switchcontrolprovider`：HyperOS 把后台启动规则也套在
+root shell 上，传送门没有进程时 `am startservice` 会直接以 `Error: app is in background` 退出
+（退出码 255），而发布 ContentProvider 会正常拉起进程、跑到传送门的 Application，
+`Instrumentation.callApplicationOnCreate` 上的 Hook 正是在那里上报 —— 实测这一步（含进程冷启动）
+约 1.4 s，不需要任何 UI，也不改动传送门状态。查询失败时才退回 `am startservice`，目标仍只有
 `com.miui.contentextension/.services.TextContentExtensionService`（若服务已在运行，其
-`onStartCommand` Hook 也会再次上报）。等待上报不再轮询，而是注册
+`onStartCommand` Hook 也会再次上报）。两条路都失败时不再等上报，直接出结论：等一份不可能到来的
+报告只是白等超时。等待上报不再轮询，而是注册
 `ModuleActivation.activationPreferences()` 的 `OnSharedPreferenceChangeListener`：注入报告最多等
 `12 s`（冷启动传送门需要几秒），确认注入后再最多等 `6 s` 拿传送门 Root 探测的第二份报告 ——
 但只在传送门还没回答过这个问题时才等。传送门的 root 探测结果无论成败都会上报，
@@ -902,7 +908,7 @@ $apk.Dispose()
 抑制、底部触发边界、左右滚动方向、边缘深度速度渐变、
 预览位置夹取、流光进度与项目缩放、近手方向映射、环形菜单左右触发/贴边半圆/自然项目顺序、
 新增外观设置和现代原生局部模糊参数的默认值/范围裁剪、原生 Window 局部模糊的圆角背景/降级判定、现代预览按文字与图片尺寸自适应并限制为屏宽三分之一、独立 Compose 悬浮窗的 ViewTree owner 传递、原始坐标与旋转映射、
-触摸设备发现、设备中途打开时对已按下手势的接管（含未武装时不接管、只接管一次、接管后第二指
+触摸设备发现、握手只读传送门自己的 provider 而不碰其他组件、设备中途打开时对已按下手势的接管（含未武装时不接管、只接管一次、接管后第二指
 仍然取消）、传送门 root 未授权是一个答案而不是缺报告、UUID URI 解析、设置默认值/范围/内容开关/目标规则以及本地图片时间文件名；
 新增测试还覆盖内容获取模式迁移、evdev DOWN/MOVE/UP/CANCEL、长按异步失效、节点文字/图片
 候选优先级、截图区域的扩边/缩放/夹取、日志等级/保存位置的 Provider Bundle 同步，以及背景锁开关的 Provider Bundle 同步、root 服务返回

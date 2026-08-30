@@ -27,6 +27,17 @@ internal object ModuleActivation {
             "-a miui.intent.action.TEXT_CONTENT_EXTENSION " +
             "-n com.miui.contentextension/" +
             "com.miui.contentextension.services.TextContentExtensionService"
+
+    /**
+     * HyperOS applies the background start rule to a root shell as well, so `am startservice`
+     * answers `Error: app is in background` (exit 255) whenever the portal has no process -- which
+     * is exactly when the handshake is needed. Reading the portal's own switch provider starts the
+     * process without that rule and without any UI: publishing a provider runs the portal
+     * Application, and `Instrumentation.callApplicationOnCreate` is where the hook reports the
+     * build it loaded. The query itself reads nothing of interest and changes no portal state.
+     */
+    private const val PORTAL_PROVIDER_COMMAND =
+        "content query --uri content://com.miui.contentextension.provider.switchcontrolprovider"
     private const val PORTAL_PROCESS_COMMAND = "pidof com.miui.contentextension"
     private const val PORTAL_BLACKLIST_ACTIVITY_COMMAND =
         "am start --user current -n com.miui.contentextension/" +
@@ -145,11 +156,14 @@ internal object ModuleActivation {
     fun hasRootAccess(): Boolean = runRootCommand("id -u", ROOT_PROBE_TIMEOUT_SECONDS)
 
     /**
-     * Starts Taplus' own exported service so an already-running service receives
-     * onStartCommand and a stopped service loads the current LSPosed hook.
+     * Makes sure a portal process exists so its hook can report the loaded build. Returns false
+     * when neither way in was allowed, which means waiting for a report would time out for
+     * nothing. The service start is kept as the second attempt for ROMs that answer the provider
+     * query but not the background service start, or the other way round.
      */
     fun requestPortalInjectionHandshake(): Boolean =
-        runRootCommand(PORTAL_SERVICE_COMMAND, COMMAND_TIMEOUT_SECONDS)
+        runRootCommand(PORTAL_PROVIDER_COMMAND, COMMAND_TIMEOUT_SECONDS) ||
+            runRootCommand(PORTAL_SERVICE_COMMAND, COMMAND_TIMEOUT_SECONDS)
 
     /** Whether a portal process is alive at all; only root may look at another app's processes. */
     fun isPortalRunning(): Boolean {
@@ -158,6 +172,8 @@ internal object ModuleActivation {
     }
 
     fun portalHandshakeCommand(): String = PORTAL_SERVICE_COMMAND
+
+    fun portalSpawnCommand(): String = PORTAL_PROVIDER_COMMAND
 
     /** Starts Taplus' non-exported blacklist activity as root for the current Android user. */
     fun openPortalBlacklistSettings(): Boolean =

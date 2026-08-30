@@ -91,6 +91,18 @@ class ModuleActivationTest {
     }
 
     @Test
+    fun theSpawnCommandOnlyReadsThePortalsOwnProvider() {
+        val command = ModuleActivation.portalSpawnCommand()
+        // Publishing a provider runs the portal Application, which is where the hook reports the
+        // loaded build. Nothing else may be touched to get there.
+        assertTrue(command.startsWith("content query --uri content://"))
+        assertTrue(command.contains("com.miui.contentextension.provider."))
+        assertFalse(command.contains("com.miui.contentcatcher"))
+        assertFalse(command.contains("force-stop"))
+        assertFalse(command.contains("am start"))
+    }
+
+    @Test
     fun blacklistCommandStartsOnlyTheRequestedPortalActivity() {
         assertEquals(
             "am start --user current -n com.miui.contentextension/" +

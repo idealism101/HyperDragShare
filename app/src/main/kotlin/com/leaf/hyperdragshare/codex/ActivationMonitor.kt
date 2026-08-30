@@ -317,16 +317,23 @@ internal object ActivationMonitor {
             // The portal only carries the hook while one of its processes lives, so a stopped
             // portal is started over root instead of being reported as not injected.
             var mark = SystemClock.elapsedRealtime()
-            withContext(Dispatchers.IO) { ModuleActivation.requestPortalInjectionHandshake() }
+            val portalReachable = withContext(Dispatchers.IO) {
+                ModuleActivation.requestPortalInjectionHandshake()
+            }
             handshakeMs = SystemClock.elapsedRealtime() - mark
-            if (!injected) {
+            if (!portalReachable) {
+                // Neither way into the portal was allowed, so no report can arrive and waiting for
+                // one would only spend the timeout.
+                DragShareLog.w(LOG_TAG, "unable to reach the portal; skipping the report waits")
+            }
+            if (!injected && portalReachable) {
                 mark = SystemClock.elapsedRealtime()
                 injected = awaitPortalReport(context, PORTAL_INJECTION_TIMEOUT_MS) {
                     ModuleActivation.isCurrentBuildInjected(context)
                 }
                 injectionWaitMs = SystemClock.elapsedRealtime() - mark
             }
-            if (injected) {
+            if (injected && portalReachable) {
                 // The injection is settled by now, so its row is published before the second
                 // report is awaited instead of staying on 检测中 for as long as that wait allows.
                 if (showsCheckingCard) {
@@ -351,7 +358,7 @@ internal object ActivationMonitor {
                     portalRootGranted =
                         ModuleActivation.isCurrentBuildPortalRootGranted(context)
                 }
-            } else if (frameworkInjection == null) {
+            } else if (!injected && frameworkInjection == null) {
                 // Without a framework binder a stopped portal has to be told apart from a live
                 // one that refuses to load the module.
                 handshakeInjection = if (portalInstalled == true
