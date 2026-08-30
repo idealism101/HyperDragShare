@@ -9,7 +9,7 @@
 ## 工程基线
 
 - 工程类型：Android LSPosed 模块，源码全 Kotlin（JVM 17），minSdk 33，targetSdk 34，compileSdk 37。
-- 当前版本：`1.8.5`，`versionCode 80`。
+- 当前版本：`1.8.6`，`versionCode 81`。
 - 已验证宿主：传送门 `4.2.1`，包名 `com.miui.contentextension`。
 - Xposed API：libxposed 102（`io.github.libxposed:api`），入口为
   `com.leaf.hyperdragshare.codex.DragShareModule`，模块元数据在
@@ -69,7 +69,9 @@
     上报时机是传送门任一进程的 `Instrumentation.callApplicationOnCreate`，不要退回成只在
     `TextContentExtensionService` 生命周期里上报，否则传送门不在后台时会被误报为未注入。
     “LSPosed 注入”在框架回应时只听框架，不要再 OR 上存量上报：上报比产生它的进程活得久，
-    会把已退出的传送门说成已注入。“传送门 Root 权限”优先用模块自己的 root 降到传送门 UID 探测
+    会把已退出的传送门说成已注入。作用域明确不含传送门时该行优先判为未注入（见
+    `portalInjectionState()`），并且不再尝试冷启动传送门：移出作用域后旧进程仍带着模块，
+    框架照样会报出版本号，但那台宿主不会再加载模块，状态卡也不允许在“模块作用域”为失败时显示已激活。“传送门 Root 权限”优先用模块自己的 root 降到传送门 UID 探测
     （`ModuleActivation.probePortalRootGrant()`），它不需要传送门在后台、也不会像存量上报那样在
     用户撤销授权后继续显示已授权；只有降权没生效时才回退到传送门上报，并用 `portal_root_sequence`
     区分新旧答案。传送门里的设置观察者必须活得比文本服务久，它同时是复核通道。

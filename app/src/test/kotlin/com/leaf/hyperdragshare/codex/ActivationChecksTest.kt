@@ -149,4 +149,59 @@ class ActivationChecksTest {
         assertEquals("旧版本仍在运行", injection.content)
         assertTrue(injection.failed)
     }
+    @Test
+    fun aScopeWithoutThePortalDecidesTheInjectionRowBeforeAnyLiveProcess() {
+        // Removing the portal from the scope leaves the process that was started while it was
+        // still in it running with the module loaded, so the framework keeps reporting the build.
+        // The row must not read 已注入当前版本 for a host that will never load the module again.
+        assertEquals(
+            PortalInjectionState.NotInjected,
+            portalInjectionState(
+                scopeIncludesPortal = false,
+                injected = true,
+                frameworkInjection = PortalInjectionState.Injected,
+                handshakeInjection = null,
+            ),
+        )
+        val checks = activationChecks(
+            accessibilityMode = false,
+            rootGranted = true,
+            scopeIncludesPortal = false,
+            portalInjection = PortalInjectionState.NotInjected,
+        )
+        val injection = checks.first { it.title == "LSPosed 注入" }
+        assertEquals("未注入", injection.content)
+        assertTrue(injection.failed)
+    }
+
+    @Test
+    fun anUnknownScopeLeavesTheFrameworkAndTheHandshakeToDecide() {
+        assertEquals(
+            PortalInjectionState.Injected,
+            portalInjectionState(
+                scopeIncludesPortal = null,
+                injected = true,
+                frameworkInjection = null,
+                handshakeInjection = null,
+            ),
+        )
+        assertEquals(
+            PortalInjectionState.Stale,
+            portalInjectionState(
+                scopeIncludesPortal = true,
+                injected = false,
+                frameworkInjection = PortalInjectionState.Stale,
+                handshakeInjection = null,
+            ),
+        )
+        assertEquals(
+            PortalInjectionState.Stopped,
+            portalInjectionState(
+                scopeIncludesPortal = null,
+                injected = false,
+                frameworkInjection = null,
+                handshakeInjection = PortalInjectionState.Stopped,
+            ),
+        )
+    }
 }

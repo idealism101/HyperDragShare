@@ -154,6 +154,24 @@ internal fun activationChecks(
  * switching tabs or popping a sub page never restarts a probe; only a resumed activity, a
  * content capture mode change or an explicit tap does.
  */
+/**
+ * Resolves the "LSPosed 注入" row. A scope that excludes the portal decides it before anything a
+ * portal process reports: a host outside the scope will not load the module again, and a process
+ * that was started while it still was in the scope is on its way out -- reporting 已注入当前版本
+ * for it would let the card read 已激活 while the 模块作用域 row right above it says 缺少传送门.
+ */
+internal fun portalInjectionState(
+    scopeIncludesPortal: Boolean?,
+    injected: Boolean,
+    frameworkInjection: PortalInjectionState?,
+    handshakeInjection: PortalInjectionState?,
+): PortalInjectionState = when {
+    scopeIncludesPortal == false -> PortalInjectionState.NotInjected
+    injected -> PortalInjectionState.Injected
+    frameworkInjection != null -> frameworkInjection
+    else -> handshakeInjection ?: PortalInjectionState.NotInjected
+}
+
 internal object ActivationMonitor {
     private val mutableSnapshot = MutableStateFlow(ActivationSnapshot())
     val snapshot: StateFlow<ActivationSnapshot> = mutableSnapshot.asStateFlow()
@@ -336,7 +354,9 @@ internal object ActivationMonitor {
         // the root spawn and the report timeouts would be spent for nothing; the row says
         // 旧版本仍在运行 and asks for a portal restart instead.
         val staleFramework = frameworkInjection == PortalInjectionState.Stale
-        if (!injected && !staleFramework) {
+        // Starting a portal that the scope excludes cannot produce a report either: the framework
+        // will not load the module into it.
+        if (!injected && !staleFramework && scopeIncludesPortal != false) {
             // The rows the framework already answered are filled in while the portal starts, so a
             // cold portal does not leave the whole card on "检测中". A re-detection keeps its
             // previous result instead.
@@ -378,6 +398,12 @@ internal object ActivationMonitor {
                 }
             }
         }
+        val portalInjection = portalInjectionState(
+            scopeIncludesPortal = scopeIncludesPortal,
+            injected = injected,
+            frameworkInjection = frameworkInjection,
+            handshakeInjection = handshakeInjection,
+        )
         if (injected && directPortalRoot == null) {
             // The injection is settled by now, so its row is published before the root report is
             // awaited instead of staying on 检测中 for as long as that wait allows.
@@ -387,7 +413,7 @@ internal object ActivationMonitor {
                     rootGranted = true,
                     frameworkLabel = frameworkLabel,
                     scopeIncludesPortal = scopeIncludesPortal,
-                    portalInjection = PortalInjectionState.Injected,
+                    portalInjection = portalInjection,
                 )
             }
             // Only the portal process is evaluated as the portal by the root manager, so it has to
@@ -412,15 +438,10 @@ internal object ActivationMonitor {
                 ModuleActivation.hasCurrentBuildPortalRootReport(context)
             portalRootGranted = ModuleActivation.isCurrentBuildPortalRootGranted(context)
         }
-        val portalInjection = when {
-            injected -> PortalInjectionState.Injected
-            // A portal outside the scope never loads the module, whatever its processes report.
-            scopeIncludesPortal == false -> PortalInjectionState.NotInjected
-            frameworkInjection != null -> frameworkInjection
-            else -> handshakeInjection ?: PortalInjectionState.NotInjected
-        }
         publish(
-            level = if (injected && portalRootGranted) {
+            // The verdict follows the row: anything that keeps the injection row off
+            // 已注入当前版本 keeps the card off 已激活 as well.
+            level = if (portalInjection == PortalInjectionState.Injected && portalRootGranted) {
                 ActivationLevel.Active
             } else {
                 ActivationLevel.Partial
