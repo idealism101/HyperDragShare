@@ -3,6 +3,7 @@ package com.leaf.hyperdragshare.codex
 import android.os.Bundle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -91,6 +92,38 @@ class ModuleActivationTest {
     }
 
     @Test
+    fun everyRootReportMovesTheSequenceSoAFreshAnswerIsRecognisable() {
+        val context = RuntimeEnvironment.getApplication()
+        ModuleActivation.activationPreferences(context).edit().clear().commit()
+        assertEquals(0L, ModuleActivation.portalRootReportSequence(context))
+
+        ModuleActivation.recordInjected(context, rootReport(true))
+        val first = ModuleActivation.portalRootReportSequence(context)
+        assertTrue(first > 0L)
+
+        // The same answer still counts as a new report: a re-probe is awaited by the round trip
+        // having happened, not by the value having changed.
+        ModuleActivation.recordInjected(context, rootReport(true))
+        assertEquals(first + 1L, ModuleActivation.portalRootReportSequence(context))
+
+        // An injection report on its own says nothing about the grant.
+        val injectionOnly = Bundle()
+        injectionOnly.putLong(
+            ModuleActivation.EXTRA_VERSION_CODE,
+            BuildConfig.VERSION_CODE.toLong(),
+        )
+        ModuleActivation.recordInjected(context, injectionOnly)
+        assertEquals(first + 1L, ModuleActivation.portalRootReportSequence(context))
+    }
+
+    @Test
+    fun anUninstalledPortalHasNoUidToProbe() {
+        // Robolectric knows no portal package, which is the same shape as an uninstalled portal:
+        // the direct probe must say "unknown" instead of "denied" so the report still decides.
+        assertNull(ModuleActivation.probePortalRootGrant(RuntimeEnvironment.getApplication()))
+    }
+
+    @Test
     fun theSpawnCommandOnlyReadsThePortalsOwnProvider() {
         val command = ModuleActivation.portalSpawnCommand()
         // Publishing a provider runs the portal Application, which is where the hook reports the
@@ -109,5 +142,17 @@ class ModuleActivationTest {
                 "com.miui.contentextension.setting.whitelist.BlacklistSettingActivity",
             ModuleActivation.portalBlacklistCommand(),
         )
+    }
+
+    private companion object {
+        private fun rootReport(granted: Boolean): Bundle {
+            val extras = Bundle()
+            extras.putLong(
+                ModuleActivation.EXTRA_VERSION_CODE,
+                BuildConfig.VERSION_CODE.toLong(),
+            )
+            extras.putBoolean(ModuleActivation.EXTRA_PORTAL_ROOT_GRANTED, granted)
+            return extras
+        }
     }
 }

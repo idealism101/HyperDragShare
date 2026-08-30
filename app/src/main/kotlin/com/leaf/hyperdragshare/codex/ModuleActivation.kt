@@ -2,6 +2,7 @@ package com.leaf.hyperdragshare.codex
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.os.Bundle
 import java.io.IOException
 import java.nio.charset.StandardCharsets
@@ -18,6 +19,9 @@ internal object ModuleActivation {
     private const val KEY_INJECTED_VERSION = "injected_version"
     private const val KEY_PORTAL_ROOT_VERSION = "portal_root_version"
     private const val KEY_PORTAL_ROOT_GRANTED = "portal_root_granted"
+
+    /** Bumped by every root report, so a caller can tell a fresh answer from the stored one. */
+    private const val KEY_PORTAL_ROOT_SEQUENCE = "portal_root_sequence"
     private const val COMMAND_TIMEOUT_SECONDS = 6L
 
     /** A first grant has to wait for the root manager prompt, which outlives a command timeout. */
@@ -108,10 +112,15 @@ internal object ModuleActivation {
             .edit()
             .putLong(KEY_INJECTED_VERSION, reportedVersion)
         if (extras != null && extras.containsKey(EXTRA_PORTAL_ROOT_GRANTED)) {
+            val preferences = activationPreferences(moduleContext)
             editor.putLong(KEY_PORTAL_ROOT_VERSION, reportedVersion)
                 .putBoolean(
                     KEY_PORTAL_ROOT_GRANTED,
                     extras.getBoolean(EXTRA_PORTAL_ROOT_GRANTED),
+                )
+                .putLong(
+                    KEY_PORTAL_ROOT_SEQUENCE,
+                    preferences.getLong(KEY_PORTAL_ROOT_SEQUENCE, 0L) + 1L,
                 )
         }
         editor.apply()
@@ -135,6 +144,30 @@ internal object ModuleActivation {
      * Only the portal process can probe its own grant, so a denied grant is a real answer that
      * the UI must not keep waiting on.
      */
+    /**
+     * Identifies the latest root report. The grant lives in the root manager and the user may
+     * change it at any time, so the answer is only known to be current while this value keeps
+     * moving; comparing it around a re-probe request tells a fresh report from the stored one.
+     */
+    fun portalRootReportSequence(context: Context?): Long {
+        if (context == null) {
+            return 0L
+        }
+        return activationPreferences(context).getLong(KEY_PORTAL_ROOT_SEQUENCE, 0L)
+    }
+
+    /**
+     * Asks a live portal process to probe its root grant again. The portal already observes the
+     * settings URI, and only the portal itself can be told apart from the module by the root
+     * manager, so this notification is the whole request; the answer arrives as another report.
+     */
+    fun requestPortalRootReprobe(context: Context): Boolean = try {
+        context.contentResolver.notifyChange(DragShareSettings.settingsUri(), null)
+        true
+    } catch (_: Throwable) {
+        false
+    }
+
     fun hasCurrentBuildPortalRootReport(context: Context?): Boolean {
         if (context == null) {
             return false
@@ -154,6 +187,41 @@ internal object ModuleActivation {
     }
 
     fun hasRootAccess(): Boolean = runRootCommand("id -u", ROOT_PROBE_TIMEOUT_SECONDS)
+
+    /**
+     * Whether the root manager grants the portal's UID, asked from this process by dropping to
+     * that UID and letting `su` decide there. The grant belongs to the UID, so the answer is the
+     * same one the portal would get, but it needs no portal process and no report round trip.
+     *
+     * Returns null when the answer would not mean anything -- the UID is unknown, root is not
+     * granted here, or the drop itself did not happen because this root solution spells `su` for
+     * another user differently -- so the caller can fall back to the portal's own report.
+     */
+    fun probePortalRootGrant(context: Context?): Boolean? {
+        val uid = portalUid(context) ?: return null
+        // `|| true` keeps a refused inner `su` from failing the whole command: a refusal is the
+        // answer, not an error. The echoed UID proves the drop happened before it.
+        val output = runRootCommandOutput(
+            "su $uid -c 'id -u; su -c id -u || true'",
+            COMMAND_TIMEOUT_SECONDS,
+        ) ?: return null
+        val lines = output.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        if (lines.firstOrNull() != uid.toString()) {
+            return null
+        }
+        return lines.drop(1).contains("0")
+    }
+
+    private fun portalUid(context: Context?): Int? {
+        if (context == null) {
+            return null
+        }
+        return try {
+            context.packageManager.getApplicationInfo(PORTAL_PACKAGE, 0).uid
+        } catch (_: PackageManager.NameNotFoundException) {
+            null
+        }
+    }
 
     /**
      * Makes sure a portal process exists so its hook can report the loaded build. Returns false

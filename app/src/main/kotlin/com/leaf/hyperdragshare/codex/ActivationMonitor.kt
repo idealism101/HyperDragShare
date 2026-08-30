@@ -33,6 +33,13 @@ private const val PORTAL_INJECTION_TIMEOUT_MS = 12_000L
 /** The root probe is a second report from a portal that already answered, so it comes sooner. */
 private const val PORTAL_ROOT_REPORT_TIMEOUT_MS = 6_000L
 
+/**
+ * Re-verifying an answer that is already on the card is different: a live portal forks its probe
+ * immediately, so a couple of seconds is generous, and the last known grant stays on the card when
+ * nothing answers instead of the card waiting.
+ */
+private const val PORTAL_ROOT_REVERIFY_TIMEOUT_MS = 2_000L
+
 private const val LOG_TAG = "DragShare/Activation"
 
 internal enum class ActivationLevel { Checking, Inactive, Partial, Active }
@@ -228,18 +235,30 @@ internal object ActivationMonitor {
         // Forking `su` and waiting for the framework binder do not depend on each other, so
         // both start before either answer is read. Only the portal branch needs the binder.
         val startedAt = SystemClock.elapsedRealtime()
-        val (rootGranted, service) = coroutineScope {
+        val (rootGranted, service, directPortalRoot) = coroutineScope {
             val serviceProbe = if (accessibilityMode) {
                 null
             } else {
                 async { XposedServiceStatus.awaitService() }
             }
+            // The portal's grant is a second question for the root manager, and asking it here
+            // costs nothing on top of the probe below: both are one `su` each and run at once.
+            val portalRootProbe = if (accessibilityMode) {
+                null
+            } else {
+                async(Dispatchers.IO) { ModuleActivation.probePortalRootGrant(context) }
+            }
             val granted = withContext(Dispatchers.IO) { ModuleActivation.hasRootAccess() }
             if (!granted) {
-                // Nothing below runs without root, so the binder wait is dropped, not awaited.
+                // Nothing below runs without root, so both waits are dropped, not awaited.
                 serviceProbe?.cancel()
+                portalRootProbe?.cancel()
             }
-            granted to if (granted) serviceProbe?.await() else null
+            Triple(
+                granted,
+                if (granted) serviceProbe?.await() else null,
+                if (granted) portalRootProbe?.await() else null,
+            )
         }
         val probeMs = SystemClock.elapsedRealtime() - startedAt
         if (!rootGranted) {
@@ -290,22 +309,37 @@ internal object ActivationMonitor {
         var injectionWaitMs = 0L
         var rootWaitMs = 0L
 
-        var injected = frameworkInjection == PortalInjectionState.Injected
-            || withContext(Dispatchers.IO) { ModuleActivation.isCurrentBuildInjected(context) }
-        var portalRootGranted = ModuleActivation.isCurrentBuildPortalRootGranted(context)
-        // A denied grant is an answer, not a missing one: re-running the handshake for it would
-        // start the portal service over root and then wait out the report timeout for nothing.
-        var portalRootReported = ModuleActivation.hasCurrentBuildPortalRootReport(context)
+        // The framework knows which portal processes are alive and what each one loaded, so it
+        // decides this row whenever it answered. A stored report cannot: it outlives the process
+        // that sent it, and a report from a portal that has since died would claim an injection
+        // that no live process provides.
+        var injected = if (frameworkInjection == null) {
+            withContext(Dispatchers.IO) { ModuleActivation.isCurrentBuildInjected(context) }
+        } else {
+            frameworkInjection == PortalInjectionState.Injected
+        }
+        // The direct probe is the whole answer when it works: it needs no portal process, and it
+        // cannot go stale the way a stored report does. The report stays as the fallback for root
+        // solutions where dropping to another UID did not prove anything.
+        var portalRootGranted = directPortalRoot
+            ?: ModuleActivation.isCurrentBuildPortalRootGranted(context)
+        // A denied grant is an answer, not a missing one, so the two are kept apart: the log says
+        // which of them a 不可用 row came from.
+        var portalRootReported = directPortalRoot != null ||
+            ModuleActivation.hasCurrentBuildPortalRootReport(context)
+        // The grant lives in the root manager and the user may revoke it at any time, so a report
+        // that has to be relied on is asked for again and identified by this sequence.
+        val rootSequenceBefore = ModuleActivation.portalRootReportSequence(context)
         var handshakeInjection: PortalInjectionState? = null
         // A portal process runs whatever module build it loaded when it started, so one that the
         // framework reports on a different build cannot be talked into reporting this one. Both
-        // the root `am startservice` and the report timeouts would be spent for nothing; the row
-        // says 旧版本仍在运行 and asks for a portal restart instead.
+        // the root spawn and the report timeouts would be spent for nothing; the row says
+        // 旧版本仍在运行 and asks for a portal restart instead.
         val staleFramework = frameworkInjection == PortalInjectionState.Stale
-        if ((!injected || !portalRootReported) && !staleFramework) {
-            // The rows the framework already answered are filled in while the handshake runs, so a
-            // cold portal does not leave the whole card on "检测中" for twelve seconds. A
-            // re-detection keeps its previous result instead.
+        if (!injected && !staleFramework) {
+            // The rows the framework already answered are filled in while the portal starts, so a
+            // cold portal does not leave the whole card on "检测中". A re-detection keeps its
+            // previous result instead.
             if (showsCheckingCard) {
                 publish(
                     level = ActivationLevel.Checking,
@@ -316,51 +350,25 @@ internal object ActivationMonitor {
             }
             // The portal only carries the hook while one of its processes lives, so a stopped
             // portal is started over root instead of being reported as not injected.
-            var mark = SystemClock.elapsedRealtime()
+            val mark = SystemClock.elapsedRealtime()
             val portalReachable = withContext(Dispatchers.IO) {
                 ModuleActivation.requestPortalInjectionHandshake()
             }
             handshakeMs = SystemClock.elapsedRealtime() - mark
-            if (!portalReachable) {
+            if (portalReachable) {
+                val waitMark = SystemClock.elapsedRealtime()
+                injected = awaitPortalReport(context, PORTAL_INJECTION_TIMEOUT_MS) {
+                    ModuleActivation.isCurrentBuildInjected(context)
+                }
+                injectionWaitMs = SystemClock.elapsedRealtime() - waitMark
+            } else {
                 // Neither way into the portal was allowed, so no report can arrive and waiting for
                 // one would only spend the timeout.
                 DragShareLog.w(LOG_TAG, "unable to reach the portal; skipping the report waits")
             }
-            if (!injected && portalReachable) {
-                mark = SystemClock.elapsedRealtime()
-                injected = awaitPortalReport(context, PORTAL_INJECTION_TIMEOUT_MS) {
-                    ModuleActivation.isCurrentBuildInjected(context)
-                }
-                injectionWaitMs = SystemClock.elapsedRealtime() - mark
-            }
-            if (injected && portalReachable) {
-                // The injection is settled by now, so its row is published before the second
-                // report is awaited instead of staying on 检测中 for as long as that wait allows.
-                if (showsCheckingCard) {
-                    publish(
-                        level = ActivationLevel.Checking,
-                        rootGranted = true,
-                        frameworkLabel = frameworkLabel,
-                        scopeIncludesPortal = scopeIncludesPortal,
-                        portalInjection = PortalInjectionState.Injected,
-                    )
-                }
-                // The portal probes its own root grant on a second thread and answers again.
-                if (!portalRootReported) {
-                    val rootMark = SystemClock.elapsedRealtime()
-                    portalRootReported = awaitPortalReport(
-                        context,
-                        PORTAL_ROOT_REPORT_TIMEOUT_MS,
-                    ) {
-                        ModuleActivation.hasCurrentBuildPortalRootReport(context)
-                    }
-                    rootWaitMs = SystemClock.elapsedRealtime() - rootMark
-                    portalRootGranted =
-                        ModuleActivation.isCurrentBuildPortalRootGranted(context)
-                }
-            } else if (!injected && frameworkInjection == null) {
-                // Without a framework binder a stopped portal has to be told apart from a live
-                // one that refuses to load the module.
+            if (!injected && frameworkInjection == null) {
+                // Without a framework binder a stopped portal has to be told apart from a live one
+                // that refuses to load the module.
                 handshakeInjection = if (portalInstalled == true
                     && !withContext(Dispatchers.IO) { ModuleActivation.isPortalRunning() }
                 ) {
@@ -369,6 +377,40 @@ internal object ActivationMonitor {
                     PortalInjectionState.NotInjected
                 }
             }
+        }
+        if (injected && directPortalRoot == null) {
+            // The injection is settled by now, so its row is published before the root report is
+            // awaited instead of staying on 检测中 for as long as that wait allows.
+            if (showsCheckingCard) {
+                publish(
+                    level = ActivationLevel.Checking,
+                    rootGranted = true,
+                    frameworkLabel = frameworkLabel,
+                    scopeIncludesPortal = scopeIncludesPortal,
+                    portalInjection = PortalInjectionState.Injected,
+                )
+            }
+            // Only the portal process is evaluated as the portal by the root manager, so it has to
+            // answer this row -- and it has to answer it again on every detection, because the
+            // report it sent when it started says nothing about a grant revoked since. A portal
+            // that was just started is already reporting; the request is what reaches one that
+            // has been running for a while.
+            withContext(Dispatchers.IO) { ModuleActivation.requestPortalRootReprobe(context) }
+            val rootMark = SystemClock.elapsedRealtime()
+            val rootTimeoutMs = if (portalRootReported) {
+                PORTAL_ROOT_REVERIFY_TIMEOUT_MS
+            } else {
+                PORTAL_ROOT_REPORT_TIMEOUT_MS
+            }
+            val answered = awaitPortalReport(context, rootTimeoutMs) {
+                ModuleActivation.portalRootReportSequence(context) != rootSequenceBefore
+            }
+            rootWaitMs = SystemClock.elapsedRealtime() - rootMark
+            // An unanswered request leaves the last known grant on the card: it is the best answer
+            // there is, and the injection was proved either way.
+            portalRootReported = answered ||
+                ModuleActivation.hasCurrentBuildPortalRootReport(context)
+            portalRootGranted = ModuleActivation.isCurrentBuildPortalRootGranted(context)
         }
         val portalInjection = when {
             injected -> PortalInjectionState.Injected
@@ -393,6 +435,7 @@ internal object ActivationMonitor {
             LOG_TAG,
             "portal activation injected=" + injected
                 + " portalRoot=" + portalRootGranted
+                + " portalRootSource=" + (if (directPortalRoot == null) "report" else "direct")
                 + " portalRootReported=" + portalRootReported
                 + " injection=" + portalInjection
                 + " framework=" + (frameworkLabel ?: "unavailable")

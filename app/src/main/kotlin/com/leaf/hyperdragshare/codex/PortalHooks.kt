@@ -66,6 +66,16 @@ internal object PortalHooks {
     @Volatile
     private var activationReported = false
 
+    /**
+     * Any portal process' Application context. Unlike [portalContext] this is set even in a
+     * process that never created the text service -- a portal cold started only to answer the
+     * activation handshake is exactly such a process -- so it is what the root re-probe channel
+     * runs on.
+     */
+    @SuppressLint("StaticFieldLeak")
+    @Volatile
+    private var portalApplicationContext: Context? = null
+
     @Volatile
     private var portalContext: Context? = null
 
@@ -121,6 +131,12 @@ internal object PortalHooks {
                 try {
                     val application = chain.args[0] as Application
                     val context = application.applicationContext ?: application
+                    if (isMainPortalProcess(application)) {
+                        portalApplicationContext = context
+                        // The settings URI is also how the module asks for a fresh root answer,
+                        // and it has to be observable in a process without the text service.
+                        registerSettingsObserver(context)
+                    }
                     // The provider call may have to start the module process, which
                     // must not delay the portal's own startup.
                     Thread(
@@ -179,7 +195,9 @@ internal object PortalHooks {
 
         intercept(PortalReflect.requireMethod(serviceClass, "onDestroy"), Hooker { chain ->
             try {
-                unregisterSettingsObserver()
+                // The settings observer deliberately outlives the text service: it is also the
+                // channel the module uses to ask this process for a fresh root answer, and the
+                // process usually keeps running after the service is gone.
                 stopPortalRuntime(false)
                 portalContext = null
             } catch (error: Throwable) {
@@ -477,6 +495,14 @@ internal object PortalHooks {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
                 applyPortalRuntime()
+                // The module also notifies this URI while it re-checks activation. Only this
+                // process is evaluated by the root manager as the portal, and its grant can be
+                // revoked long after the process started, so the answer is probed again here
+                // instead of being reported once per process.
+                val activationContext = portalApplicationContext ?: portalContext
+                if (activationContext != null) {
+                    ModuleActivation.probePortalRootAccessAsync(activationContext)
+                }
             }
         }
         try {
@@ -489,6 +515,19 @@ internal object PortalHooks {
         } catch (error: Throwable) {
             log("unable to observe settings changes", error)
         }
+    }
+
+    /**
+     * Whether this is the portal's own process rather than one of its `:` sub processes. The root
+     * grant belongs to the UID, so one process answering for it is enough.
+     */
+    private fun isMainPortalProcess(application: Application): Boolean {
+        val processName = try {
+            Application.getProcessName()
+        } catch (_: Throwable) {
+            null
+        }
+        return processName == null || processName == application.packageName
     }
 
     private fun unregisterSettingsObserver() {
