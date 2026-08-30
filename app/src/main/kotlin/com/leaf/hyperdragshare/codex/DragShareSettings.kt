@@ -35,6 +35,7 @@ internal class DragShareSettings(
     modernGlassOpacityPercent: Int,
     logLevel: Int,
     logDestination: Int,
+    sharedCopyLocation: Int,
 ) {
     val colorMode: Int
 
@@ -85,6 +86,8 @@ internal class DragShareSettings(
     val logLevel: Int
 
     val logDestination: Int
+
+    val sharedCopyLocation: Int
 
     /** Full constructor including diagnostic logging configuration. */
     init {
@@ -160,6 +163,7 @@ internal class DragShareSettings(
         )
         this.logLevel = normalizeLogLevel(logLevel)
         this.logDestination = normalizeLogDestination(logDestination)
+        this.sharedCopyLocation = normalizeSharedCopyLocation(sharedCopyLocation)
     }
 
     /** Backward-compatible constructor for callers using the original settings shape. */
@@ -589,6 +593,62 @@ internal class DragShareSettings(
         DEFAULT_LOG_DESTINATION,
     )
 
+    /** Backward-compatible constructor for callers that predate the shared-copy choice. */
+    constructor(
+    colorMode: Int,
+    uiStyle: Int,
+    edgeTriggerDp: Int,
+    scrollSpeedDpPerSecond: Int,
+    blockBackgroundScroll: Boolean,
+    textSharingEnabled: Boolean,
+    imageSharingEnabled: Boolean,
+    simpleMenuPosition: Int,
+    simpleMenuOpacityPercent: Int,
+    simpleMenuCornerRadiusDp: Int,
+    simpleMenuEdgeDistanceDp: Int,
+    iconOpacityPercent: Int,
+    closeMenuWhenPointerLeaves: Boolean,
+    hiddenTargetKeys: Set<String>?,
+    targetOrder: List<String>?,
+    contentCaptureMode: Int,
+    accessibilityLandscapeRecognitionEnabled: Boolean,
+    accessibilityBlacklistedPackages: Set<String>?,
+    accessibilityLongPressTimeoutMillis: Int,
+    accessibilityRecognitionSensitivityPercent: Int,
+    preloadTextSegmenter: Boolean,
+    modernBlurRadiusDp: Int,
+    modernGlassOpacityPercent: Int,
+    logLevel: Int,
+    logDestination: Int,
+    ) : this(
+        colorMode,
+        uiStyle,
+        edgeTriggerDp,
+        scrollSpeedDpPerSecond,
+        blockBackgroundScroll,
+        textSharingEnabled,
+        imageSharingEnabled,
+        simpleMenuPosition,
+        simpleMenuOpacityPercent,
+        simpleMenuCornerRadiusDp,
+        simpleMenuEdgeDistanceDp,
+        iconOpacityPercent,
+        closeMenuWhenPointerLeaves,
+        hiddenTargetKeys,
+        targetOrder,
+        contentCaptureMode,
+        accessibilityLandscapeRecognitionEnabled,
+        accessibilityBlacklistedPackages,
+        accessibilityLongPressTimeoutMillis,
+        accessibilityRecognitionSensitivityPercent,
+        preloadTextSegmenter,
+        modernBlurRadiusDp,
+        modernGlassOpacityPercent,
+        logLevel,
+        logDestination,
+        DEFAULT_SHARED_COPY_LOCATION,
+    )
+
     fun saveLocal(context: Context?) {
         if (context == null) {
             return
@@ -637,6 +697,7 @@ internal class DragShareSettings(
             )
             .putInt(KEY_LOG_LEVEL, logLevel)
             .putInt(KEY_LOG_DESTINATION, logDestination)
+            .putInt(KEY_SHARED_COPY_LOCATION, sharedCopyLocation)
             .apply()
         DragShareLog.configure(this)
         DragShareLog.i(
@@ -694,6 +755,7 @@ internal class DragShareSettings(
         )
         result.putInt(KEY_LOG_LEVEL, logLevel)
         result.putInt(KEY_LOG_DESTINATION, logDestination)
+        result.putInt(KEY_SHARED_COPY_LOCATION, sharedCopyLocation)
         return result
     }
 
@@ -748,6 +810,21 @@ internal class DragShareSettings(
         const val LOG_DESTINATION_SYSTEM = 0
         const val LOG_DESTINATION_FILE = 1
         const val DEFAULT_LOG_DESTINATION = LOG_DESTINATION_SYSTEM
+
+        /**
+         * Publishes a short-lived copy into the shared media collection when an image is handed to
+         * another app, for the minority of devices where a recipient reports the image as missing.
+         * The price is that galleries can see the copy while it exists, so this is opt-in.
+         */
+        const val SHARED_COPY_LOCATION_PUBLIC = 0
+
+        /**
+         * Keeps the image in the module's private cache — the default, because the private
+         * capability URI works on the devices this module has been verified on and leaves nothing
+         * in the gallery. A recipient that refuses a third-party authority cannot read it.
+         */
+        const val SHARED_COPY_LOCATION_MODULE = 1
+        const val DEFAULT_SHARED_COPY_LOCATION = SHARED_COPY_LOCATION_MODULE
 
         /** Change notification only; settings values remain behind the trusted Provider RPC. */
         private const val SETTINGS_URI_VALUE =
@@ -872,6 +949,7 @@ internal class DragShareSettings(
             "accessibility_recognition_sensitivity_percent"
         private const val KEY_LOG_LEVEL = "log_level"
         private const val KEY_LOG_DESTINATION = "log_destination"
+        private const val KEY_SHARED_COPY_LOCATION = "shared_copy_location"
 
 
         fun defaults(): DragShareSettings = DragShareSettings(
@@ -986,6 +1064,10 @@ internal class DragShareSettings(
                 ),
                 preferences.getInt(KEY_LOG_LEVEL, DEFAULT_LOG_LEVEL),
                 preferences.getInt(KEY_LOG_DESTINATION, DEFAULT_LOG_DESTINATION),
+                preferences.getInt(
+                    KEY_SHARED_COPY_LOCATION,
+                    DEFAULT_SHARED_COPY_LOCATION,
+                ),
             )
         }
 
@@ -1101,6 +1183,10 @@ internal class DragShareSettings(
                 ),
                 bundle.getInt(KEY_LOG_LEVEL, DEFAULT_LOG_LEVEL),
                 bundle.getInt(KEY_LOG_DESTINATION, DEFAULT_LOG_DESTINATION),
+                bundle.getInt(
+                    KEY_SHARED_COPY_LOCATION,
+                    DEFAULT_SHARED_COPY_LOCATION,
+                ),
             )
         }
 
@@ -1227,6 +1313,13 @@ internal class DragShareSettings(
             }
             return LOG_LEVEL_INFO
         }
+
+        private fun normalizeSharedCopyLocation(location: Int): Int =
+            if (location == SHARED_COPY_LOCATION_PUBLIC) {
+                SHARED_COPY_LOCATION_PUBLIC
+            } else {
+                SHARED_COPY_LOCATION_MODULE
+            }
 
         private fun normalizeLogDestination(destination: Int): Int =
             if (destination == LOG_DESTINATION_FILE) {

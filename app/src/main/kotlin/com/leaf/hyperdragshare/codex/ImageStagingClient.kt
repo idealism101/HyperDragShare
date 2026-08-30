@@ -11,10 +11,13 @@ import java.util.concurrent.atomic.AtomicReference
 
 internal object ImageStagingClient {
     interface Callback {
-        fun onStaged(uri: Uri?)
+        /** Receives the private provider URI; the shared copy is published later, on demand. */
+        fun onStaged(staged: Uri?)
 
         fun onFailure(error: Throwable?)
     }
+
+    private const val TAG = "DragShare/Stage"
 
     const val AUTHORITY = "com.leaf.hyperdragshare.codex.share"
 
@@ -22,6 +25,7 @@ internal object ImageStagingClient {
     const val METHOD_STAGE = "stage_image"
     const val METHOD_GRANT = "grant_image"
     const val METHOD_REVOKE = "revoke_image"
+    const val METHOD_PUBLISH = "publish_image"
 
     /** Legacy byte-array input accepted by the Provider during process upgrades. */
     const val EXTRA_BYTES = "bytes"
@@ -46,6 +50,35 @@ internal object ImageStagingClient {
             }
         }
     }
+
+    /**
+     * Mirrors the staged image into the shared media collection and returns that URI, or null
+     * when the collection is unavailable.
+     *
+     * A shared copy is the one form every recipient accepts, but it is a real file in the user's
+     * `Pictures` tree and therefore visible to gallery apps for as long as it exists. So the RPC is
+     * sent at the moment the user commits to handing the image to another app, and never for a
+     * preview, a cancelled drag, or a local-only action; whether it publishes anything is the
+     * Provider's decision, since only it can read the current location preference.
+     */
+    fun publishShared(context: Context, staged: Uri?): Uri? {
+        if (staged == null || !isOwnAuthority(staged)) {
+            return null
+        }
+        return try {
+            val extras = Bundle()
+            extras.putString(RESULT_URI, staged.toString())
+            val result = context.contentResolver.call(BASE_URI, METHOD_PUBLISH, null, extras)
+            val value = result?.getString(RESULT_URI)
+            if (value == null) null else Uri.parse(value)
+        } catch (error: Throwable) {
+            DragShareLog.w(TAG, "shared copy is unavailable", error)
+            null
+        }
+    }
+
+    /** True for the module's own authority, the only URI kind this client can grant. */
+    fun isOwnAuthority(uri: Uri?): Boolean = uri != null && AUTHORITY == uri.authority
 
     private fun stagePng(context: Context?, bitmap: Bitmap?): Uri {
         if (context == null || bitmap == null || bitmap.isRecycled) {

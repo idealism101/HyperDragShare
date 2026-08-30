@@ -46,6 +46,10 @@ class ShareImageProvider : ContentProvider() {
             enforcePortalCaller()
             return revokeImage(extras)
         }
+        if (ImageStagingClient.METHOD_PUBLISH == method) {
+            enforcePortalCaller()
+            return publishImage(extras)
+        }
         if (ImageStagingClient.METHOD_STAGE != method) {
             return super.call(method, arg, extras)
         }
@@ -116,6 +120,44 @@ class ShareImageProvider : ContentProvider() {
         )
         val result = Bundle()
         result.putString(ImageStagingClient.RESULT_URI, uri.toString())
+        return result
+    }
+
+    /**
+     * Mirrors an already staged image into the shared media collection. Some devices report the
+     * image as missing in the recipient — the cause is not understood, and it does not reproduce on
+     * the devices this module is developed on — and a shared file is the one form every recipient
+     * accepts. It is also a real file in the user's `Pictures` tree, so it is off by default and,
+     * when enabled, created only once the caller knows the image is being handed to another app.
+     *
+     * The user's location preference is enforced here rather than in the caller: the setting lives
+     * in this UID's preferences, so a portal process holding a stale settings bundle can neither
+     * publish a copy the user has switched off nor suppress one they asked for.
+     */
+    private fun publishImage(extras: Bundle?): Bundle {
+        val uri = requireShareUri(extras)
+        val file = resolveFile(uri)
+        if (!file.isFile) {
+            throw IllegalArgumentException("Staged image no longer exists")
+        }
+        val context = contextOrThrow()
+        val settings = DragShareSettings.readLocal(context)
+        if (settings.sharedCopyLocation == DragShareSettings.SHARED_COPY_LOCATION_MODULE) {
+            DragShareLog.i(TAG, "shared copy skipped location=module")
+            return Bundle.EMPTY
+        }
+        val suffix = resolveSuffix(uri) ?: ShareUriToken.PNG_SUFFIX
+        val published = SharedImagePublisher.publish(
+            context,
+            file,
+            mimeTypeForSuffix(suffix),
+            suffix,
+        )
+        DragShareLog.i(TAG, "shared copy created=" + (published != null))
+        val result = Bundle()
+        if (published != null) {
+            result.putString(ImageStagingClient.RESULT_URI, published.toString())
+        }
         return result
     }
 
@@ -327,6 +369,7 @@ class ShareImageProvider : ContentProvider() {
         File(shareDirectory, ShareUriToken.fileName(token, suffix))
 
     private fun cleanupExpiredFiles() {
+        SharedImagePublisher.sweep(contextOrThrow())
         val files = shareDirectory.listFiles() ?: return
         val cutoff = System.currentTimeMillis() - MAX_CACHE_AGE_MS
         for (file in files) {

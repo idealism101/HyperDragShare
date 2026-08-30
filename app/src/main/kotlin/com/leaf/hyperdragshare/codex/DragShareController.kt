@@ -119,6 +119,17 @@ internal class DragShareController(
         }
     }
 
+    private val pendingLaunchTimeout: Runnable = Runnable {
+        val stalled = session
+        if (stalled != null && stalled.pendingTarget != null) {
+            stalled.pendingTarget = null
+            stalled.cancelled = true
+            log("pending share timed out before the image was ready")
+            showToast("图片准备失败")
+        }
+        discardPendingLaunch()
+    }
+
     @Volatile private var active = false
     @Volatile private var destroyed = false
     // startPick*Task can create Taplus' full-screen float view before this controller reaches
@@ -138,6 +149,11 @@ internal class DragShareController(
     private var lastHandledAction = -1
     private var edgeDirection = 0
     private var inputSourceLogged = false
+    private var gestureSource: String? = null
+    // HyperOS lets a module start an activity while one of its overlays is still attached. When
+    // the drop lands before the PNG finished staging, the gesture windows are gone by the time
+    // the pending share launches, so a 1x1 transparent window is parked in their place.
+    private var pendingLaunchAnchor: View? = null
     private var duplicateStartLogged = false
     private var backgroundBlockAttempted = false
     private var portalGlowStartedLogged = false
@@ -284,25 +300,20 @@ internal class DragShareController(
         source: String?,
         beforeFinish: Runnable? = null,
     ) {
-        DragShareLog.d(
-            TAG,
-            "pointer received source=" + source +
-                " action=" + MotionEvent.actionToString(action) +
-                " point=" + Math.round(x) + "," + Math.round(y) +
-                " active=" + active +
-                " time=" + eventTime,
-        )
         lastObservedX = x
         lastObservedY = y
         lastObservedEventTime = eventTime
         mainHandler.post {
-            if (active && !inputSourceLogged) {
-                inputSourceLogged = true
-                log(
-                    "input source=" + source +
-                        " action=" + MotionEvent.actionToString(action) +
-                        " point=" + Math.round(x) + "," + Math.round(y),
-                )
+            if (active) {
+                gestureSource = source
+                session?.pointerEvents = (session?.pointerEvents ?: 0) + 1
+                if (!inputSourceLogged) {
+                    inputSourceLogged = true
+                    log(
+                        "input source=" + source +
+                            " first=" + MotionEvent.actionToString(action),
+                    )
+                }
             }
             handleMotionOnMain(action, x, y, eventTime, source, beforeFinish)
         }
@@ -352,6 +363,7 @@ internal class DragShareController(
             session?.cancelled = true
             stopEdgeScroll()
             backgroundTouchBlocker.stop()
+            discardPendingLaunch()
             removeGestureViews()
             dragShareToast.close()
         }
@@ -376,6 +388,7 @@ internal class DragShareController(
         }
         active = false
         inputSourceLogged = false
+        gestureSource = null
         duplicateStartLogged = false
         backgroundBlockAttempted = false
         portalGlowStartedLogged = false
@@ -392,6 +405,7 @@ internal class DragShareController(
         palette = OverlayColors.from(settings)
         stopEdgeScroll()
         backgroundTouchBlocker.stop()
+        discardPendingLaunch()
         removeGestureViews()
 
         if (!settings.isSharingEnabled(payload.isImage())) {
@@ -476,7 +490,8 @@ internal class DragShareController(
                 " targets=" + shareTargets.size +
                 " style=" + settings.uiStyle +
                 " blockBackground=" + settings.blockBackgroundScroll +
-                " at=" + Math.round(initialX) + "," + Math.round(initialY),
+                " chars=" + (payload.text?.length ?: 0) +
+                " image=" + describeBitmap(payload),
         )
 
         if (payload.isImage()) {
@@ -485,12 +500,20 @@ internal class DragShareController(
                 context,
                 payload.bitmap,
                 object : ImageStagingClient.Callback {
-                    override fun onStaged(uri: Uri?) {
+                    override fun onStaged(staged: Uri?) {
                         mainHandler.post {
                             if (destroyed || stagedSession == null || stagedSession.cancelled) {
                                 return@post
                             }
-                            stagedSession.stagedUri = uri
+                            stagedSession.stagedUri = staged
+                            stagedSession.stagedAtUptime = SystemClock.uptimeMillis()
+                            log(
+                                "image ready afterMs=" +
+                                    (
+                                        stagedSession.stagedAtUptime -
+                                            stagedSession.startedAtUptime
+                                        ),
+                            )
                             if (stagedSession.pendingTarget != null) {
                                 launchPendingShare(stagedSession)
                             }
@@ -502,6 +525,8 @@ internal class DragShareController(
                             if (!destroyed && stagedSession != null && !stagedSession.cancelled) {
                                 log("image staging failed", error)
                                 if (stagedSession.pendingTarget != null) {
+                                    stagedSession.pendingTarget = null
+                                    discardPendingLaunch()
                                     showToast("图片准备失败")
                                 }
                             }
@@ -1011,11 +1036,7 @@ internal class DragShareController(
         }
         handlePointerOnMain(x, y)
         if (action == MotionEvent.ACTION_UP) {
-            log(
-                "gesture finished source=" + source +
-                    " point=" + Math.round(x) + "," + Math.round(y) +
-                    " menu=" + menuShown,
-            )
+            log("gesture finished source=" + source + " menu=" + menuShown)
             finishGestureOnMain(true, beforeFinish)
         }
     }
@@ -1616,6 +1637,7 @@ internal class DragShareController(
         backgroundTouchBlocker.stop()
         afterDeactivate?.run()
 
+        logGestureEnd(finished, target, allowShare)
         // HyperOS can silently reject an AccessibilityService activity start after its last
         // accessibility overlay has been removed. Keep the passive overlay attached through
         // the user-selected launch, then clean it up in the same main-thread turn.
@@ -1627,12 +1649,72 @@ internal class DragShareController(
                 launchShare(finished, target)
             } else {
                 finished.pendingTarget = target
+                // The staged PNG is not ready yet, so the launch has to outlive these windows.
+                keepOverlayForPendingLaunch()
                 showToast("正在准备图片")
             }
         } else if (finished != null && finished.pendingTarget == null) {
             finished.cancelled = true
         }
         removeGestureViews(true)
+    }
+
+    private fun logGestureEnd(
+        finished: Session?,
+        target: ShareTarget?,
+        allowShare: Boolean,
+    ) {
+        if (finished == null) {
+            return
+        }
+        val staged = if (!finished.payload.isImage()) {
+            "n/a"
+        } else if (finished.stagedUri == null) {
+            "pending"
+        } else {
+            "ready"
+        }
+        log(
+            "gesture summary source=" + gestureSource +
+                " kind=" + finished.payload.kind +
+                " events=" + finished.pointerEvents +
+                " durationMs=" + (SystemClock.uptimeMillis() - finished.startedAtUptime) +
+                " menu=" + menuShown +
+                " image=" + staged +
+                " target=" + (
+                    if (!allowShare) "cancelled" else target?.component?.flattenToShortString()
+                    ),
+        )
+    }
+
+    private fun describeBitmap(payload: CapturedContent): String {
+        val bitmap = payload.bitmap ?: return "none"
+        return bitmap.width.toString() + "x" + bitmap.height
+    }
+
+    private fun keepOverlayForPendingLaunch() {
+        discardPendingLaunch()
+        try {
+            val anchor = View(context)
+            windowManager.addView(anchor, overlayParams(1, 1, "drag-share-pending"))
+            pendingLaunchAnchor = anchor
+        } catch (error: Throwable) {
+            log("unable to park an overlay for the pending share", error)
+        }
+        mainHandler.postDelayed(pendingLaunchTimeout, PENDING_LAUNCH_TIMEOUT_MS)
+    }
+
+    private fun discardPendingLaunch() {
+        mainHandler.removeCallbacks(pendingLaunchTimeout)
+        val anchor = pendingLaunchAnchor
+        pendingLaunchAnchor = null
+        if (anchor != null) {
+            try {
+                windowManager.removeViewImmediate(anchor)
+            } catch (ignored: Throwable) {
+                // Already removed or never attached.
+            }
+        }
     }
 
     private fun cancelGestureOnMain() {
@@ -1655,7 +1737,15 @@ internal class DragShareController(
             return
         }
         pendingSession.pendingTarget = null
-        launchShare(pendingSession, target)
+        log(
+            "pending share launching afterMs=" +
+                (SystemClock.uptimeMillis() - pendingSession.startedAtUptime),
+        )
+        try {
+            launchShare(pendingSession, target)
+        } finally {
+            discardPendingLaunch()
+        }
     }
     private fun launchShare(shareSession: Session, target: ShareTarget) {
         if (target.isSaveToLocal()) {
@@ -1664,7 +1754,12 @@ internal class DragShareController(
             return
         }
         if (target.isCopyToClipboard()) {
-            copyToClipboard(shareSession.payload, shareSession.stagedUri)
+            // The clipboard hands the image to whichever app the user pastes into, so it needs
+            // the same shared copy an explicit share does.
+            copyToClipboard(
+                shareSession.payload,
+                publishSharedCopy(shareSession) ?: shareSession.stagedUri,
+            )
             shareSession.cancelled = true
             return
         }
@@ -1675,17 +1770,33 @@ internal class DragShareController(
         }
         try {
             log("drop target=" + target.component?.flattenToShortString())
+            val staged = shareSession.stagedUri
+            val shared = publishSharedCopy(shareSession)
             ShareLauncher.launch(
                 context,
                 shareSession.payload,
                 target,
-                shareSession.stagedUri,
+                shared ?: staged,
+                staged,
                 dragShareToast,
             )
         } catch (error: Throwable) {
             log("share launch failed", error)
         }
         shareSession.cancelled = true
+    }
+
+    /**
+     * Publishes the shared media copy of an already staged image, or returns null when there is
+     * nothing to publish and when the shared collection is unavailable.
+     *
+     * A shared copy is a real file in the user's `Pictures` tree and shows up in gallery apps
+     * while it exists, so it is created here — once the user has actually dropped the image on a
+     * recipient — instead of for every image the preview stages.
+     */
+    private fun publishSharedCopy(shareSession: Session): Uri? {
+        val staged = shareSession.stagedUri ?: return null
+        return ImageStagingClient.publishShared(context, staged)
     }
 
     private fun copyToClipboard(payload: CapturedContent?, stagedImage: Uri?) {
@@ -2322,7 +2433,10 @@ internal class DragShareController(
         }
     }
     private class Session(val payload: CapturedContent) {
+        val startedAtUptime: Long = SystemClock.uptimeMillis()
         var stagedUri: Uri? = null
+        var stagedAtUptime: Long = 0L
+        var pointerEvents: Int = 0
         var pendingTarget: ShareTarget? = null
         var cancelled: Boolean = false
     }
@@ -2409,6 +2523,7 @@ internal class DragShareController(
     }
     companion object {
         private const val TAG = "DragShare/UI"
+        private const val PENDING_LAUNCH_TIMEOUT_MS = 8_000L
         private const val PREVIEW_TEXT_WIDTH_DP = 184
         private const val PREVIEW_TEXT_HEIGHT_DP = 112
         private const val PREVIEW_IMAGE_SIZE_DP = 148

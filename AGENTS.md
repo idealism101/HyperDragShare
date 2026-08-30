@@ -9,7 +9,7 @@
 ## 工程基线
 
 - 工程类型：Android LSPosed 模块，源码全 Kotlin（JVM 17），minSdk 33，targetSdk 34，compileSdk 37。
-- 当前版本：`1.8.9`，`versionCode 84`。
+- 当前版本：`1.9.3`，`versionCode 88`。
 - 已验证宿主：传送门 `4.2.1`，包名 `com.miui.contentextension`。
 - Xposed API：libxposed 102（`io.github.libxposed:api`），入口为
   `com.leaf.hyperdragshare.codex.DragShareModule`，模块元数据在
@@ -39,7 +39,24 @@
 5. 不要把图片 URI 描述成“只靠临时 URI grant 才能读取”。当前 Provider 会给目标包显式
    grant，但 `openFile()` 故意不再额外调用 `checkUriPermission()`，以兼容会丢失 grant
    信息的系统分享代理和应用内二次转发。读取能力同时依赖不可枚举的 UUID URI；
-   `stage/grant/revoke` RPC 仍只允许模块自身或传送门 UID。
+   `stage/grant/revoke` RPC 仍只允许模块自身或传送门 UID。默认分享的就是模块私有 authority 的能力
+   URI；`SharedImagePublisher` 写入共享 MediaStore（`Pictures/HyperDragShare`，保留 10 分钟，到点由
+   调度任务删除）的副本是给少数设备的回退选项，只有用户把 `shared_copy_location` 改成公共目录后
+   才会发布。那些设备上接收方（反馈里是微信/QQ/淘宝/京东/拼多多）收到私有 URI 时根本不会访问本
+   模块 Provider（日志里没有任何 `query`/`openFile`），但同样的应用在开发验证机上分享正常，原因
+   未查明，不要把它写成“主流应用一律不读第三方 authority”。
+   这份共享副本只能在“落点已经确定、图片确实要交给别的应用”时创建（`publish_image` RPC，由
+   `DragShareController.publishSharedCopy()` 触发），绝不能挪回 `stage_image`：它是用户
+   `Pictures` 目录下的真实文件，存在期间必然出现在相册里，而 `IS_PENDING`/`IS_TRASHED`/隐藏目录
+   都会连非所有者读取一起挡掉，换 `Download`/`Documents` 也仍然被 `MediaStore.Images` 查到。
+   保留期由 `SharedImageCleanupJob` 兜底，不要改成“只在下一次暂存时清理”。设置项
+   `shared_copy_location` 默认是模块私有目录，只有用户明确选择公共目录才发布副本——不要为了少数
+   失败反馈把默认改回公共目录，那会让所有人的相册多出临时文件；未知值也必须归一到模块目录。
+   这个判断只能放在模块进程的 `publish_image` 里，注入进程手上的设置 Bundle 可能是旧的。
+   设置项说明按“解决什么问题 / 带来什么问题”两句写，并且不点名具体应用。也不要写成“检测到分享
+   成功就删除”：字节由 MediaProvider 提供，模块收不到读取事件，`ShareOutcomeProbe` 只能确认目标
+   进了前台。显式 `grantUriPermission()`/`revokeUriPermission()` 只对模块自己的 authority
+   调用（`ImageStagingClient.isOwnAuthority()`）；对 MediaStore URI 调用会被 AMS 拒绝。
 6. 图片分享 Intent 的 `data`、`EXTRA_STREAM`、`ClipData`、MIME type 和
    `FLAG_GRANT_READ_URI_PERMISSION` 是兼容性组合，不能只保留其中一项。
 7. 不要随意修改传送门私有类名、方法名或控制码。它们绑定传送门 4.2.1，变更前需要反编译
@@ -136,6 +153,12 @@
 - `ShareTargetRepository.kt`：查询可处理对应 MIME 的导出 Activity，并克隆/着色内置目标的旧矢量图标。
 - `BitmapEncoder.kt`、`ImageStagingClient.kt`、`ShareImageProvider.kt`：图片压缩、
   跨 UID 暂存、能力 URI 和授权。
+- `SharedImagePublisher.kt`：在落点确定后把暂存文件镜像到共享 MediaStore 集合，并只清理模块
+  自己插入的行；`sweep()` 返回未到期的行数。
+- `SharedImageCleanupJob.kt`：发布成功后排的 `JobScheduler` 任务，让 10 分钟保留期成为上限而不
+  只是下限。不要改回 `Handler`：模块进程没有前台组件，随时会被回收。
+- `ShareOutcomeProbe.kt`：仅调试等级下用一次 root `dumpsys` 复核目标是否真的进入前台；
+  `startActivity()` 返回不代表启动成功，日志里只能写 `startActivity returned`。
 - `LocalImageSaver.kt`：把图片首项保存到系统 Pictures，按秒生成文件名。
 - `ShareLauncher.kt`：构造显式 `ACTION_SEND` 并启动目标 Activity。
 - `GestureMath.kt`、`ShareUriToken.kt`：可单测的纯逻辑。
@@ -152,7 +175,7 @@
 .\gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-当前应有 87 个单元测试通过，APK 输出到
+当前应有 106 个单元测试通过，APK 输出到
 `app\build\outputs\apk\debug\app-debug.apk`。交付新的可安装行为时同步递增
 `versionCode` 和 `versionName`；纯文档修改不要求增版。
 
@@ -178,8 +201,15 @@ adb logcat -v time | Select-String "DragShare|AndroidRuntime"
 
 正常 root 链路应出现 `DragShare/RootInput: ready`、
 `root input is authoritative`、`input source=root`，并最终由 root `ACTION_UP` 输出
-`gesture finished`。图片链路应看到 `DragShareProvider` 的 `staged`、`granted` 和
-目标 UID 的 `open`。
+`gesture summary` 与 `gesture finished`。图片链路默认应看到 `staged format=png`、
+`shared copy skipped location=module`、`intent image source=module`、`startActivity returned`，调试等级下
+还有 `share outcome ... foreground=yes`；用户选择公共目录后中间两行变成 `shared copy created=true`、
+`intent image source=mediastore`，此时目标 UID 的 `openFile` 只在退回私有 authority 时出现。
+
+日志里不允许再出现触摸坐标。逐事件日志只保留非 MOVE 事件，`RootTouchSource` 的原始 evdev
+追踪限定在一次手势的前两帧；诊断价值来自每阶段一条语义行（`preview shown` 的文字长度与图片
+尺寸、`gesture summary` 的来源/事件数/时长/图片状态/落点目标、图片链路的四行），风格参考
+`E:\workspace\InstallerX-Revived`。
 
 `probe/` 当前不是 `settings.gradle` 的模块，只可能残留历史验证构建缓存；除非用户明确要求，
 不要重新接入或围绕它改造正式实现。

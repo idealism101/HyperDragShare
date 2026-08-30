@@ -674,4 +674,86 @@ class DragShareSettingsTest {
             ),
         )
     }
+
+    @Test
+    fun sharedCopyLocationDefaultsToTheModuleDirectoryAndRoundTripsThroughBundle() {
+        // The private capability URI leaves nothing in the gallery, so it stays the default;
+        // publishing a gallery-visible copy is the choice the user has to make deliberately.
+        assertEquals(
+            DragShareSettings.SHARED_COPY_LOCATION_MODULE,
+            DragShareSettings.defaults().sharedCopyLocation,
+        )
+
+        val published = DragShareSettings(
+            DragShareSettings.COLOR_LIGHT,
+            DragShareSettings.STYLE_SIMPLE,
+            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
+            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
+            false,
+            true,
+            true,
+            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
+            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
+            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
+            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
+            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
+            true,
+            LinkedHashSet<String>(),
+            emptyList(),
+            DragShareSettings.CONTENT_CAPTURE_PORTAL,
+            false,
+            LinkedHashSet<String>(),
+            DragShareSettings.DEFAULT_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
+            DragShareSettings.DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
+            true,
+            DragShareSettings.DEFAULT_MODERN_BLUR_RADIUS_DP,
+            DragShareSettings.DEFAULT_MODERN_GLASS_OPACITY_PERCENT,
+            DragShareSettings.DEFAULT_LOG_LEVEL,
+            DragShareSettings.DEFAULT_LOG_DESTINATION,
+            DragShareSettings.SHARED_COPY_LOCATION_PUBLIC,
+        )
+        assertEquals(
+            DragShareSettings.SHARED_COPY_LOCATION_PUBLIC,
+            published.sharedCopyLocation,
+        )
+        assertEquals(
+            DragShareSettings.SHARED_COPY_LOCATION_PUBLIC,
+            DragShareSettings.fromBundle(published.toBundle()).sharedCopyLocation,
+        )
+
+        // An older injected process, or a preference file written by a build that predates the
+        // choice, must not silently start publishing gallery-visible copies.
+        val unknown = DragShareSettings(
+            DragShareSettings.COLOR_LIGHT,
+            DragShareSettings.STYLE_SIMPLE,
+            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
+            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
+            false,
+            true,
+            true,
+            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
+            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
+            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
+            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
+            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
+            true,
+            LinkedHashSet<String>(),
+            emptyList(),
+            DragShareSettings.CONTENT_CAPTURE_PORTAL,
+            false,
+            LinkedHashSet<String>(),
+            DragShareSettings.DEFAULT_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
+            DragShareSettings.DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
+            true,
+            DragShareSettings.DEFAULT_MODERN_BLUR_RADIUS_DP,
+            DragShareSettings.DEFAULT_MODERN_GLASS_OPACITY_PERCENT,
+            DragShareSettings.DEFAULT_LOG_LEVEL,
+            DragShareSettings.DEFAULT_LOG_DESTINATION,
+            7,
+        )
+        assertEquals(
+            DragShareSettings.SHARED_COPY_LOCATION_MODULE,
+            unknown.sharedCopyLocation,
+        )
+    }
 }

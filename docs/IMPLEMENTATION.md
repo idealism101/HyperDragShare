@@ -1,6 +1,6 @@
 # HyperDragShare 完整实现说明
 
-本文记录 HyperDragShare `1.8.9`（`versionCode 84`）的当前完整实现、关键兼容性选择和已验证
+本文记录 HyperDragShare `1.9.3`（`versionCode 88`）的当前完整实现、关键兼容性选择和已验证
 设备参数。实现目标是：传送门识别长按文字或图片后，在手指附近立即显示预览；同一根手指
 无需抬起即可继续拖动；简洁和现代样式可按设置出现在上、下、左、右或近手侧，流光样式在底部显示横向分享菜单，环形样式可从左右边缘展开半圆
 菜单；停留在可滚动热区时自动滚动；松手落在目标上时直接分享。
@@ -83,7 +83,10 @@ Root/MIUI 输入源；已连接的无障碍服务收到无障碍模式时才启�
 | `BitmapEncoder.kt` | 将 Bitmap 无损编码为 PNG |
 | `ImageStagingClient.kt` | 从传送门进程调用模块 Provider |
 | `ShareImageProvider.kt` | 模块 UID 下暂存图片并提供 content URI |
-| `ShareLauncher.kt` | 构造并启动显式 ACTION_SEND |
+| `SharedImagePublisher.kt` | 落点确定后才把暂存图片镜像到共享 MediaStore 集合并按保留期清理 |
+| `SharedImageCleanupJob.kt` | 调度任务：保留期到点就删掉已发布的共享副本，不必等下一次暂存 |
+| `ShareLauncher.kt` | 构造并启动显式 ACTION_SEND，必要时改用私有 URI 重试 |
+| `ShareOutcomeProbe.kt` | 调试等级下用 root `dumpsys` 复核目标是否真的进入前台 |
 | `LocalImageSaver.kt` | 将图片保存到系统 Pictures 集合并生成时间文件名 |
 
 ## 3. 传送门 Hook 与内容抓取
@@ -642,6 +645,7 @@ Binder transaction code、触摸设备节点或分辨率。root 调用只接受�
 | `content_capture_mode` | `0` 为传送门，`1` 为无障碍 | `0` |
 | `text_sharing_enabled` | 是否创建文字拖拽会话 | `true` |
 | `image_sharing_enabled` | 是否创建图片拖拽会话 | `true` |
+| `shared_copy_location` | 分享图片的存放位置：`0` 公共目录、`1` 仅模块私有目录 | `1` |
 | `ui_style` | 拖拽样式：`0` 简洁、`1` 流光、`2` 环形、`3` 现代 | 现代（`3`） |
 | `hidden_targets` | 被隐藏的 Activity/内置动作键集合 | 空集合 |
 | `target_order` | Activity 键的用户顺序 | 空（沿用系统顺序） |
@@ -660,6 +664,13 @@ Binder transaction code、触摸设备节点或分辨率。root 调用只接受�
 | `log_level` | `0` 禁用、`1` 信息、`2` 调试 | `1` |
 | `log_destination` | `0` 系统日志、`1` root 保护的文件 | `0` |
 
+“启用图片分享”下方的“图片存放位置”下拉项对应 `shared_copy_location`，说明按“解决什么问题 /
+带来什么问题”写，且不点名具体应用：模块目录解决相册里出现临时副本，代价是少数接收方读不到、
+会提示“资源不存在”；公共目录解决少数接收方提示“资源不存在”，代价是副本存在期间相册能看到它。
+默认是模块目录——私有能力 URI 在已验证设备上工作正常，只有少数用户失败且原因不明，不能让所有
+人为此在相册里多出临时文件。这一项由模块进程的 `publish_image` 自己读取本地设置并执行
+（见 §9.2），不依赖传送门传回的 Bundle 值。
+
 设置页只写模块 UID 的 SharedPreferences；`get_settings` Bundle 将这些集合传给注入进程，
 模块进程的无障碍服务直接读取本地设置。
 控制器在查询当前 MIME 的目标后先过滤隐藏键，再按 `target_order` 排序，最后追加本次新发现
@@ -676,7 +687,7 @@ Binder transaction code、触摸设备节点或分辨率。root 调用只接受�
 
 ### 7.9 日志与诊断
 
-首页“关于”前的“日志”区块提供“禁用 / 信息（当前）/ 调试”三级输出，以及“系统日志（当前）/
+首页“关于”前的“日志”区块提供“禁用 / 信息（默认）/ 调试”三级输出，以及“系统日志（默认）/
 文件”两个保存位置。默认值为信息级别和系统日志，因此升级不会改变既有 `adb logcat` 排查路径。
 禁用后模块自身不再输出运行日志；信息级别保留常规生命周期、分享、输入源和错误记录；调试级别
 额外记录每个输入源仲裁、传送门回调、root evdev 原始起始帧与解析帧。
@@ -767,11 +778,77 @@ content://com.leaf.hyperdragshare.codex.share/shared/<UUID>.png
 
 升级前已生成的 `.jpg` URI 和更早的无后缀 JPEG URI 仍可按原 MIME 与文件名读取。
 
-暂存时会顺便清理最后修改时间超过 24 小时的旧图片并撤销授权。清理是“下一次暂存时”触发，
-不是精确的 24 小时定时任务。
+这个私有授权本身不足以让主流接收端读图。实机日志显示微信、QQ、淘宝、京东、拼多多在收到
+`EXTRA_STREAM` 后**从不访问本模块的 Provider**（同一次会话里只有 `staged`、`getType` 和
+`granted`，没有任何 `query` 或 `openFile`），随后各自弹出“资源不存在”；只有小米笔记这类系统
+应用愿意直接打开任意第三方 authority。它们期望的是一个位于共享媒体集合中的真实文件，而不是
+落在 `/data/user/0/<模块包名>/cache/` 下的能力 URI。
+
+所以必须有一份共享媒体副本。但它是用户 `Pictures` 目录下的真实文件，只要存在就会被相册索引，
+而且没有办法让它“存在但不可见”：
+
+- `IS_PENDING=1` 和 `IS_TRASHED=1` 都能把行从相册列表里去掉，代价是同时挡住所有非所有者读取，
+  接收端一样打不开；
+- `.nomedia` 目录或以 `.` 开头的目录根本不会被索引，于是既没有 `content://media` URI，也没有
+  接收端可读的路径；
+- 换成 `Download`/`Documents` 也没用：MediaProvider 按 MIME 推导 `MEDIA_TYPE`，PNG 仍然是
+  `MEDIA_TYPE_IMAGE`，相册查询 `MediaStore.Images` 时照样会返回这一行。
+
+可控的只有“存在多久”和“到底要不要存在”，因此副本的创建被推迟到用户真的把图片交给别的应用的
+那一刻：
+
+- `stage_image` 只写私有缓存并返回私有能力 URI，不再顺手发布副本。预览、被取消的拖动、
+  「保存到本地」和分词都不会在相册里留下任何东西。
+- 落点确定后 `DragShareController.publishSharedCopy()` 才发一次 `publish_image` RPC，由
+  Provider 在模块进程里插入 MediaStore 行并拷贝字节：
+
+```text
+Pictures/HyperDragShare/dragshare_<毫秒>.png
+```
+
+  插入时先置 `IS_PENDING=1`，用 `ContentResolver.openOutputStream()` 拷贝字节，完成后清除
+  `IS_PENDING`；任何一步失败都会删除半成品行并返回空结果，本次落点继续用私有 URI，不会让整次
+  分享失败。行由模块包名插入，因此模块可以无权限删除它，而任何持有 `READ_MEDIA_IMAGES` 的
+  接收端都能读取。
+- 「复制到剪贴板」同样会发布副本：剪贴板最终也是把图片交给另一个应用，兼容问题完全一样。
+- 默认根本不发布：`shared_copy_location` 默认是 `1`（模块目录），`publish_image` 直接返回空
+  Bundle 并记录 `shared copy skipped location=module`，落点用私有能力 URI。少数用户遇到接收方
+  提示“资源不存在”时才把它改成 `0`（公共目录）。判断放在模块进程的 `publish_image` 里，而不是
+  调用方：设置存在模块 UID 的 SharedPreferences 里，注入进程手上的 Bundle 可能是旧的，只有在
+  这里读才既不会发布用户关掉的副本，也不会漏掉用户刚打开的。
+
+`ShareLauncher.launch()` 因此拿到一对 URI：首选是刚发布的 MediaStore 副本，回退是私有
+authority 的能力 URI。没有发布副本时（默认设置，或共享集合不可用）两者相同，一次性重试自动
+退化为不重试。
+
+清理有两条独立路径：
+
+- MediaStore 副本按 10 分钟保留期清理。这 10 分钟是给接收端的读取期限而不是展示窗口：有些应用
+  只在用户最终点“发送”时才去读 `EXTRA_STREAM`，那时文件必须还在。`SharedImagePublisher.sweep()`
+  只按 `RELATIVE_PATH LIKE Pictures/HyperDragShare/%` + `dragshare_%` + `DATE_ADDED` 删除模块
+  自己插入的行（`LIKE` 前缀同时覆盖旧版本用过的 `HyperDragShare/share/` 子目录），因此不会碰到
+  用户相册里的其他图片（未提权的 MediaStore 查询本来也只能看到调用方自己的贡献）。
+  发布成功时立刻用 `JobScheduler` 排一个 `SharedImageCleanupJob`（`setMinimumLatency` 为保留期
+  再加 30 秒，`setOverrideDeadline` 再加 5 分钟），所以保留期是**上限**而不只是下限：分享完一张
+  图就放下手机、再也不拖第二张时，副本同样会自己消失。`Handler` 做不到这件事——模块进程没有前台
+  组件，随时会被回收；调度任务能活过进程死亡。任务只用一个 job id，后一次发布是重排同一个截止
+  时间而不是堆积任务；`sweep()` 返回还没到期的行数，任务据此重新排期。HyperOS 的省电策略可以把
+  任务推迟，但推迟期间用户也没在翻相册，而“下一次暂存”那条路径仍然存在，作为兜底。
+- 私有缓存文件仍按最后修改时间超过 24 小时清理并撤销授权，让接收端有足够时间延迟读取。
+
+“分享成功了就立刻删”做不到：模块无法观测到接收端读没读。副本由 MediaProvider 提供字节，模块
+自己的进程根本收不到读取事件（这也正是失败反馈里只有 `staged`/`getType`/`granted` 而没有
+`query`/`openFile` 的原因）；`ShareOutcomeProbe` 能确认的只是目标 Activity 到了前台，那是“跳转
+成功”，不是“字节已被读走”。真正贴近“这次分享结束了”的信号是接收端分享界面关闭，但那要求无障碍
+服务正在运行（传送门方式下模块跑在 Taplus 进程里，拿不到无障碍事件），而且部分应用在界面关闭后
+才真正上传，所以只能作为可选的提前清理，不能替代保留期。
 
 图片尚未暂存完成就松手时，会话保存待分享目标并提示“正在准备图片”；异步暂存完成后再启动
-目标应用，而不会丢掉这次落点。
+目标应用，而不会丢掉这次落点。这条延迟路径额外需要一个锚点窗口：HyperOS 只在模块仍有悬浮
+窗附着时允许它启动 Activity，而落点发生时预览和菜单已经被移除，所以会话会在原位挂上一个
+1×1 透明且 `FLAG_NOT_TOUCHABLE` 的窗口（`drag-share-pending`）顶住这次启动，并在启动完成、
+暂存失败或 8 秒超时后立即移除。超时会提示“图片准备失败”。这个锚点故意不由
+`removeGestureViews()` 释放，否则传送门的 `onHostTaskCancelled` 拆除流程会先把它拿掉。
 
 ### 9.3 同时满足不同接收端
 
@@ -789,17 +866,36 @@ FLAG_ACTIVITY_NEW_TASK
 显式目标 ComponentName
 ```
 
-此外，Provider 以文件所有者身份对目标包调用一次 `grantUriPermission()`。同时设置 data、
-stream、ClipData、flag 和显式 grant 看似重复，但 QQ、系统分享代理及其他应用读取 URI 的入口
-并不一致，这组组合是实机兼容所需。
+其中的 content URI 首选落点时发布的 MediaStore 副本，只有它不可用时才是模块私有 authority 的
+能力 URI。
+
+此外，当且仅当分享的是模块自己的 authority（`ImageStagingClient.isOwnAuthority()`）时，
+Provider 才以文件所有者身份对目标包调用一次 `grantUriPermission()`；MediaStore URI 不属于本
+模块，对它调用 grant 会被 AMS 的 `checkGrantUriPermission` 拒绝并抛 `SecurityException`，因此
+这条路径只保留 Intent 上的 `FLAG_GRANT_READ_URI_PERMISSION`。启动失败后的 `revokeUriPermission`
+同样只对模块自己的 authority 生效。同时设置 data、stream、ClipData、flag 和显式 grant 看似
+重复，但 QQ、系统分享代理及其他应用读取 URI 的入口并不一致，这组组合是实机兼容所需。
+
+首选 URI 启动失败时（例如某些 ROM 拒绝把媒体 URI 交给目标进程），`ShareLauncher` 会自动用私有
+能力 URI 重试一次，并只在最后一次尝试上显示失败 Toast，避免同一次落点弹两条提示。
 
 Provider 还实现了 `getType()` 和 `query()`，为新 URI 返回 PNG MIME、显示文件名和大小，
 满足会在打开文件前先探测元数据的接收端；旧 JPEG URI 仍返回 JPEG 元数据。
 
 分享诊断写入统一的 `DragShareLog` 文件，因此设置页导出的日志包含 `prepare`、脱敏后的
-Intent URI 摘要、授权结果、`startActivity succeeded`，以及 Provider 收到的 `query`、`getType`、
-`open` 或对应失败异常。能力 URI 的 UUID 文件名不会写入日志；`query` 和 `getType` 只在调试等级
-记录，关键的启动、授权和文件打开结果在信息等级也会保留。
+Intent URI 摘要（含 `source=mediastore|module`）、授权结果、`startActivity returned`，以及
+Provider 收到的 `query`、`getType`、`open` 或对应失败异常。这一行刻意不写“succeeded”：
+`startActivity()` 只会报告参数错误，后台启动被否决和接收端拒读该 URI 在这里都是静默的，日志
+不能声称超过“调用已返回”的事实。
+
+真正的结果由 `ShareOutcomeProbe` 复核：仅在调试等级、启动约 1.2 秒后用一次 root
+`dumpsys activity activities` 读取 `topResumedActivity`，输出
+`share outcome expected=… source=… foreground=yes|no|unknown resumed=…`。探测走单线程守护
+executor 并带 `pending` 标志，因此不会因连续分享而堆叠；没有 root 时结论是 `unknown`，不影响
+分享本身。
+
+能力 URI 的 UUID 文件名不会写入日志；`query` 和 `getType` 只在调试等级记录，关键的启动、授权
+和文件打开结果在信息等级也会保留。
 
 ### 9.4 授权兼容与安全边界
 
@@ -929,7 +1025,7 @@ $apk.Dispose()
 负责把 `java_init.list` 的内容同步成混淆后的名字，因此发布前要跑一次 release 并确认该文件里写的是
 混淆后的入口类（当前为一个短名），而不是空文件或被删掉。
 
-当前 100 个单元测试覆盖：当前版本注入握手与限定服务启动命令、检测项的来源顺序/“检测中”占位/
+当前 106 个单元测试覆盖：当前版本注入握手与限定服务启动命令、检测项的来源顺序/“检测中”占位/
 传送门未运行与未注入的区分/状态卡来源文案、传送门原浮窗在模块预览挂窗前的
 抑制、底部触发边界、左右滚动方向、边缘深度速度渐变、
 预览位置夹取、流光进度与项目缩放、近手方向映射、环形菜单左右触发/贴边半圆/自然项目顺序、
@@ -937,7 +1033,7 @@ $apk.Dispose()
 触摸设备发现、握手只读传送门自己的 provider 而不碰其他组件、作用域不含传送门时注入行优先判为未注入、传送门在跑但没装载模块时判未注入而不是未运行、
 版本不匹配的上报仍会记下发出它的进程号（据此区分旧版本仍在运行与未注入）、传送门未安装时直接探测返回“问不出来”
 而不是“未授权”、每份 root 上报都推进复核序号（同值也算，纯注入上报不算）、设备中途打开时对已按下手势的接管（含未武装时不接管、只接管一次、接管后第二指
-仍然取消）、传送门 root 未授权是一个答案而不是缺报告、UUID URI 解析、设置默认值/范围/内容开关/目标规则以及本地图片时间文件名；
+仍然取消）、传送门 root 未授权是一个答案而不是缺报告、UUID URI 解析、MediaStore 首选 URI 与私有 authority 的识别、共享副本只从模块自己的暂存 URI 发布、共享集合不可用时保留私有 URI、存放位置默认模块目录且未知值归一到它、设置默认值/范围/内容开关/目标规则以及本地图片时间文件名；
 新增测试还覆盖内容获取模式迁移、evdev DOWN/MOVE/UP/CANCEL、长按异步失效、节点文字/图片
 候选优先级、截图区域的扩边/缩放/夹取、日志等级/保存位置的 Provider Bundle 同步，以及背景锁开关的 Provider Bundle 同步、root 服务返回
 解析、当前 ROM DEX 的动态 Binder 事务解析与 `InputMonitor` 释放。API 102 迁移新增的覆盖是
@@ -958,19 +1054,34 @@ adb logcat -v time | Select-String "DragShare|AndroidRuntime"
 ```text
 DragShare/RootInput: ready device=...
 DragShare/Taplus: root input is authoritative; ignoring MIUI motion events
-DragShare/UI: preview shown kind=...
-DragShare/UI: input source=root ...
+DragShare/UI: preview shown kind=... chars=... image=...
+DragShare/UI: input source=root first=ACTION_DOWN
 DragShare/UI: menu shown ...
+DragShare/UI: gesture summary source=root kind=... events=... durationMs=... image=ready target=...
 DragShare/UI: gesture finished source=root ...
 DragShare/Taplus: replayed host call=...
-DragShareProvider: staged ...
-DragShareProvider: granted ...
-DragShareProvider: open uid=...
+DragShareProvider: staged format=png bytes=...
+DragShareProvider: shared copy skipped location=module
+DragShare/Share: intent image source=module ... grant=true
+DragShare/Share: startActivity returned target=...
+DragShare/Share: share outcome expected=... foreground=yes ...
 ```
 
+日志刻意不记录任何触摸坐标：`RootTouchSource` 只在一次手势的前两帧输出原始 evdev 追踪，之后
+只对非 MOVE 事件输出 `decoded <action> frames=N rotation=R`；`MiuiMotionSource` 和
+`PortalHooks` 的分发日志同样只保留非 MOVE 事件与指针数。取而代之的是每阶段一条语义行：
+`preview shown` 带文字长度与图片尺寸，`gesture summary` 带输入来源、事件数、时长、菜单侧、
+图片状态（`n/a`/`pending`/`ready`）和落点目标，图片链路带
+`staged`→`shared copy`→`intent image`→`startActivity returned`→`share outcome`。
+
 若再次出现“移动一点就消失”，先查结束日志来自 `root`、`miui`、control 还是 host cancel；不要
-先假定是 WindowManager 限制。若图片失败，按 `staged -> granted -> startActivity -> open`
-顺序判断是压缩/暂存、Intent 启动还是接收端读取问题。若同一应用只能触发一次，检查每次
+先假定是 WindowManager 限制。若图片失败，按
+`staged -> shared copy -> intent image -> startActivity returned -> share outcome -> open` 顺序判断
+是压缩/暂存、共享副本、Intent 构造、启动还是接收端读取问题：`shared copy skipped location=module`
+是默认设置下的正常行为，`shared copy created=false` 才说明用户已切到公共目录但 MediaStore 副本
+没写成功、本次退回了私有 URI；`share outcome foreground=no` 说明启动被静默否决；接收端报
+“资源不存在”而日志里完全没有 `query`/`openFile`，说明它根本没访问模块 Provider，这类设备需要
+把存放位置改成公共目录（为什么只有部分设备如此仍未查明）。若同一应用只能触发一次，检查每次
 真实 UP 后是否同时出现 `deferred host call` 和 `replayed host call`；永久吞掉 `257` 会让
 传送门的 `sIsTaskFinished` 保持旧状态，只能靠焦点切换重置。文件位置下在首页选择“导出日志”；
 对大屏输入异常，优先查看 `RootInput: ready` 后是否出现 `decoded ACTION_DOWN/MOVE`，以及同一文件中
@@ -996,3 +1107,10 @@ DragShareProvider: open uid=...
 - `getRunningTargets()` 是框架的诊断接口，不保证每个实现都提供；不提供时注入状态退回 Provider
   握手，首页检测会重新变慢到十几秒。
 - Provider 的能力 URI 优先兼容分享中继；完整 URI 在缓存清理前应被视为可读取凭证。
+- 少数设备上接收方会把私有能力 URI 报成“资源不存在”，原因未查明；这些用户需要把“图片存放位置”
+  改成公共目录。开启后，真正把图片交给别的应用（分享或复制到剪贴板）时会在共享媒体集合
+  `Pictures/HyperDragShare` 中出现一份副本，相册在它存在期间可以看到；它由模块插入，最长
+  10 分钟后由调度任务删除（不必等下一次暂存）。模块无法识别“接收端已经读完”，所以这个窗口不能
+  靠检测分享成功来提前结束。默认设置、预览、被取消的拖动和本地操作都不会创建副本。共享媒体集合的可读性和相册可见性是同一件事，
+  所以无法在保留期内把它藏起来（见 §9.2）。若设备没有可写的外部媒体集合，分享会退回私有
+  authority，此时仍可能被只接受共享文件的接收端拒绝。

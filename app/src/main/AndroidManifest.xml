@@ -73,6 +73,16 @@
         </service>
 
         <!--
+          Deletes published shared copies when their retention window ends, so a
+          gallery-visible copy cannot outlive it just because no further image is
+          staged. Scheduled work outlives this process; a Handler would not.
+        -->
+        <service
+            android:name=".SharedImageCleanupJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!--
           Image staging and grant management accept calls only from this app or
           Taplus. Read URIs use unguessable UUID tokens and expire from cache.
         -->

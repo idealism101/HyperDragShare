@@ -666,6 +666,29 @@ private fun SettingsPage(
                             persist(copySettings(settings, imageSharingEnabled = checked))
                         },
                     )
+                    AnimatedVisibility(visible = settings.imageSharingEnabled) {
+                        OverlayDropdownPreference(
+                            title = "图片存放位置",
+                            summary = if (settings.sharedCopyLocation
+                                == DragShareSettings.SHARED_COPY_LOCATION_MODULE
+                            ) {
+                                "解决相册里出现临时副本：图片只留在模块私有目录。" +
+                                    "代价是少数接收方读不到，会提示“资源不存在”"
+                            } else {
+                                "解决少数接收方提示“资源不存在”：分享时额外放一份公共目录里的" +
+                                    "副本给它读。代价是副本存在期间相册能看到它，最长 10 分钟" +
+                                    "后自动删除；预览、取消的拖动和保存到本地不会生成副本"
+                            },
+                            items = listOf("公共目录", "模块目录（默认）"),
+                            selectedIndex = settings.sharedCopyLocation.coerceIn(
+                                DragShareSettings.SHARED_COPY_LOCATION_PUBLIC,
+                                DragShareSettings.SHARED_COPY_LOCATION_MODULE,
+                            ),
+                            onSelectedIndexChange = { selected ->
+                                persist(copySettings(settings, sharedCopyLocation = selected))
+                            },
+                        )
+                    }
                 }
             }
 
@@ -964,7 +987,7 @@ private fun SettingsPage(
                             DragShareSettings.LOG_LEVEL_DEBUG -> "记录运行环境与输入诊断步骤"
                             else -> "记录当前常规运行信息"
                         },
-                        items = listOf("禁用", "信息（当前）", "调试"),
+                        items = listOf("禁用", "信息（默认）", "调试"),
                         selectedIndex = settings.logLevel.coerceIn(
                             DragShareSettings.LOG_LEVEL_DISABLED,
                             DragShareSettings.LOG_LEVEL_DEBUG,
@@ -994,7 +1017,7 @@ private fun SettingsPage(
                         } else {
                             "写入系统日志（Logcat）"
                         },
-                        items = listOf("系统日志（当前）", "文件"),
+                        items = listOf("系统日志（默认）", "文件"),
                         selectedIndex = settings.logDestination.coerceIn(
                             DragShareSettings.LOG_DESTINATION_SYSTEM,
                             DragShareSettings.LOG_DESTINATION_FILE,
@@ -2073,6 +2096,7 @@ private fun copySettings(
         current.accessibilityRecognitionSensitivityPercent,
     logLevel: Int = current.logLevel,
     logDestination: Int = current.logDestination,
+    sharedCopyLocation: Int = current.sharedCopyLocation,
 ): DragShareSettings = DragShareSettings(
     colorMode,
     uiStyle,
@@ -2099,6 +2123,7 @@ private fun copySettings(
     modernGlassOpacityPercent,
     logLevel,
     logDestination,
+    sharedCopyLocation,
 )
 
 @Suppress("DEPRECATION")
