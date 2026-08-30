@@ -38,10 +38,7 @@ internal class AccessibilityContentCaptureSource(
                         rootTouchSource.isReady()
 
                 override fun onLongPress(gestureId: Long, stableX: Float, stableY: Float) {
-                    service.trace(
-                        "gesture=" + gestureId + " long press point=" +
-                            Math.round(stableX) + "," + Math.round(stableY),
-                    )
+                    service.trace("gesture=" + gestureId + " long press accepted")
                     captureAt(gestureId, stableX, stableY, false)
                 }
 
@@ -71,8 +68,7 @@ internal class AccessibilityContentCaptureSource(
             after == LongPressGestureDetector.State.IGNORED_UNTIL_UP
         ) {
             service.trace(
-                "gesture=" + gestureDetector.currentGestureId() +
-                    " rejected movement point=" + Math.round(x) + "," + Math.round(y),
+                "gesture=" + gestureDetector.currentGestureId() + " rejected movement",
             )
         }
     }

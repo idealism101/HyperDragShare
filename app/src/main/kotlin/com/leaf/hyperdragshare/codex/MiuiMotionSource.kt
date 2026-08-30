@@ -6,7 +6,6 @@ import android.view.MotionEvent
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
-import kotlin.math.roundToInt
 
 internal class MiuiMotionSource(
     private val classLoader: ClassLoader,
@@ -46,26 +45,25 @@ internal class MiuiMotionSource(
                     && args.size == 1
                     && args[0] is MotionEvent
                 ) {
+                    val current = args[0] as MotionEvent
                     if (!firstEventLogged) {
                         firstEventLogged = true
-                        val first = args[0] as MotionEvent
                         DragShareLog.i(
                             TAG,
                             "first event action="
-                                + MotionEvent.actionToString(first.actionMasked)
-                                + " point=" + first.rawX.roundToInt()
-                                + "," + first.rawY.roundToInt(),
+                                + MotionEvent.actionToString(current.actionMasked),
                         )
                     }
-                    val current = args[0] as MotionEvent
-                    DragShareLog.d(
-                        TAG,
-                        "event action="
-                            + MotionEvent.actionToString(current.actionMasked)
-                            + " point=" + current.rawX.roundToInt()
-                            + "," + current.rawY.roundToInt(),
-                    )
-                    listener.onMotionEvent(MotionEvent.obtain(args[0] as MotionEvent))
+                    // Only the gesture boundaries are worth a line; MOVE arrives per frame.
+                    if (current.actionMasked != MotionEvent.ACTION_MOVE) {
+                        DragShareLog.d(
+                            TAG,
+                            "event action="
+                                + MotionEvent.actionToString(current.actionMasked)
+                                + " pointers=" + current.pointerCount,
+                        )
+                    }
+                    listener.onMotionEvent(MotionEvent.obtain(current))
                 }
                 null
             }

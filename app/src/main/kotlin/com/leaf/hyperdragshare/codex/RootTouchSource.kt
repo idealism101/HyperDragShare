@@ -39,8 +39,9 @@ internal class RootTouchSource(private val context: Context, private val listene
     private var rawMaxY = 0
     private var firstEventLogged = false
     private var discoveredDevices = ""
-    private var rawEventsInFrame = 0
     private var rawFrameCount = 0L
+    private var decodedInGesture = 0
+    private var lastRotation = -1
 
     @Synchronized
     fun start() {
@@ -51,8 +52,8 @@ internal class RootTouchSource(private val context: Context, private val listene
         running = true
         firstEventLogged = false
         discoveredDevices = ""
-        rawEventsInFrame = 0
         rawFrameCount = 0L
+        decodedInGesture = 0
         DragShareLog.d(TAG, "root input start requested")
         val started = Thread({ runLoop() }, "drag-share-root-input")
         started.isDaemon = true
@@ -253,21 +254,14 @@ internal class RootTouchSource(private val context: Context, private val listene
     }
 
     private fun consumeEvent(type: Int, code: Int, value: Int) {
-        if (DragShareLog.isDebugEnabled()) {
-            rawEventsInFrame++
-            if (rawFrameCount < 12L) {
-                DragShareLog.d(
-                    TAG,
-                    "raw evdev event type=" + type + " code=" + code + " value=" + value,
-                )
-            }
+        if (DragShareLog.isDebugEnabled() && rawFrameCount < RAW_TRACE_FRAMES) {
+            // A single decoded frame proves the axis layout; after that the trace only repeats.
+            DragShareLog.d(
+                TAG,
+                "raw evdev event type=" + type + " code=" + code + " value=" + value,
+            )
             if (type == EvdevTouchParser.EV_SYN && code == EvdevTouchParser.SYN_REPORT) {
                 rawFrameCount++
-                DragShareLog.d(
-                    TAG,
-                    "raw evdev frame=" + rawFrameCount + " events=" + rawEventsInFrame,
-                )
-                rawEventsInFrame = 0
             }
         }
         parser.consume(type, code, value)
@@ -278,22 +272,25 @@ internal class RootTouchSource(private val context: Context, private val listene
             return
         }
         val screenPoint = toScreenCoordinates(rawX, rawY)
-        DragShareLog.d(
-            TAG,
-            "decoded " + MotionEvent.actionToString(action) +
-                " raw=" + Math.round(rawX) + ',' + Math.round(rawY) +
-                " mapped=" + Math.round(screenPoint[0]) + ',' + Math.round(screenPoint[1]),
-        )
+        if (action == MotionEvent.ACTION_DOWN) {
+            decodedInGesture = 0
+        }
+        decodedInGesture++
+        if (action != MotionEvent.ACTION_MOVE) {
+            DragShareLog.d(
+                TAG,
+                "decoded " + MotionEvent.actionToString(action) +
+                    " frames=" + decodedInGesture +
+                    " rotation=" + lastRotation,
+            )
+        }
         emit(action, screenPoint[0], screenPoint[1])
     }
 
     private fun emit(action: Int, x: Float, y: Float) {
         if (!firstEventLogged) {
             firstEventLogged = true
-            log(
-                "first event action=" + MotionEvent.actionToString(action) +
-                    " point=" + Math.round(x) + "," + Math.round(y),
-            )
+            log("first event action=" + MotionEvent.actionToString(action))
         }
         listener.onPointerEvent(action, x, y, SystemClock.uptimeMillis())
     }
@@ -302,6 +299,7 @@ internal class RootTouchSource(private val context: Context, private val listene
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val metrics = currentDisplayMetrics()
         val rotation = windowManager.defaultDisplay.rotation
+        lastRotation = rotation
         return GestureMath.mapRawPoint(
             rawX,
             rawY,
@@ -359,6 +357,7 @@ internal class RootTouchSource(private val context: Context, private val listene
 
     companion object {
         private const val TAG = "DragShare/RootInput"
+        private const val RAW_TRACE_FRAMES = 2L
         private val EVENT_HANDLER: Pattern = Pattern.compile("\\b(event\\d+)\\b")
         private val MAX_X: Pattern = Pattern.compile("ABS_MT_POSITION_X\\s*:.*?max\\s+(\\d+)")
         private val MAX_Y: Pattern = Pattern.compile("ABS_MT_POSITION_Y\\s*:.*?max\\s+(\\d+)")

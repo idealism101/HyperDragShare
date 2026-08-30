@@ -16,7 +16,6 @@ import java.lang.reflect.Method
 import java.util.ArrayDeque
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.roundToInt
 
 /**
  * Installs the Taplus hooks with libxposed API 102. The interceptor model has no before/after
@@ -62,6 +61,7 @@ internal object PortalHooks {
 
     @Volatile
     private var controlIgnoredLogged = false
+    private var callbackShapeLogged = false
 
     @Volatile
     private var activationReported = false
@@ -351,19 +351,24 @@ internal object PortalHooks {
                 as? Map<String, Any?> ?: return false
 
             val motion = properties[MOTION_KEY]
-            DragShareLog.d(
-                TAG,
-                "portal callback keys=" + properties.keys
-                    + " motion=" + (motion is MotionEvent)
-                    + " control=" + properties[CONTROL_KEY].toString(),
-            )
+            val control = properties[CONTROL_KEY]
+            // A motion-carrying callback arrives once per frame; only the control codes and the
+            // first payload shape say anything the next line would not repeat.
+            if (control != null || !callbackShapeLogged) {
+                callbackShapeLogged = true
+                DragShareLog.d(
+                    TAG,
+                    "portal callback keys=" + properties.keys
+                        + " motion=" + (motion is MotionEvent)
+                        + " control=" + control.toString(),
+                )
+            }
             if (motion is MotionEvent) {
                 dispatchMotion(MotionEvent.obtain(motion))
                 // A motion-only result is not valid Taplus pick content.
                 return true
             }
 
-            val control = properties[CONTROL_KEY]
             if ("258" == control) {
                 // Taplus normally interprets a move as cancellation.
                 return true
@@ -386,11 +391,12 @@ internal object PortalHooks {
     }
 
     private fun dispatchMotion(event: MotionEvent) {
-        DragShareLog.d(
-            TAG,
-            "MIUI motion action=" + MotionEvent.actionToString(event.actionMasked)
-                + " point=" + event.rawX.roundToInt() + "," + event.rawY.roundToInt(),
-        )
+        if (event.actionMasked != MotionEvent.ACTION_MOVE) {
+            DragShareLog.d(
+                TAG,
+                "MIUI motion action=" + MotionEvent.actionToString(event.actionMasked),
+            )
+        }
         if (hasLiveRootSource()) {
             event.recycle()
             if (!rootAuthorityLogged) {
@@ -457,6 +463,7 @@ internal object PortalHooks {
         rootPointerSeen = false
         hostCancelIgnoredLogged = false
         controlIgnoredLogged = false
+        callbackShapeLogged = false
         clearDeferredHostCalls()
         controller = DragShareController(context, OverlayWindowPolicy.portal())
         val source = MiuiMotionSource(
@@ -546,12 +553,9 @@ internal object PortalHooks {
 
     private fun dispatchRootPointer(action: Int, x: Float, y: Float, eventTime: Long) {
         rootPointerSeen = true
-        DragShareLog.d(
-            TAG,
-            "root pointer action=" + MotionEvent.actionToString(action)
-                + " point=" + x.roundToInt() + "," + y.roundToInt()
-                + " time=" + eventTime,
-        )
+        if (action != MotionEvent.ACTION_MOVE) {
+            DragShareLog.d(TAG, "root pointer action=" + MotionEvent.actionToString(action))
+        }
         val current = controller
         current?.acceptPointerEvent(
             action,

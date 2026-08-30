@@ -164,10 +164,7 @@ class DragShareAccessibilityService : AccessibilityService() {
         }
         val settings = DragShareSettings.readLocal(this)
         val roots = rootsAtPoint(x, y, settings)
-        trace(
-            "gesture=" + gestureId + " roots=" + roots.size +
-                " point=" + Math.round(x) + "," + Math.round(y),
-        )
+        trace("gesture=" + gestureId + " roots=" + roots.size)
         for (windowRoot in roots) {
             try {
                 val snapshots = snapshotTree(windowRoot.root, windowRoot.layer)
@@ -247,10 +244,7 @@ class DragShareAccessibilityService : AccessibilityService() {
                 action == MotionEvent.ACTION_UP ||
                 action == MotionEvent.ACTION_CANCEL
             ) {
-                trace(
-                    "root action=" + MotionEvent.actionToString(action) +
-                        " point=" + Math.round(x) + "," + Math.round(y),
-                )
+                trace("root action=" + MotionEvent.actionToString(action))
             }
             val source = captureSource
             source?.onPointerEvent(action, x, y, eventTime)
