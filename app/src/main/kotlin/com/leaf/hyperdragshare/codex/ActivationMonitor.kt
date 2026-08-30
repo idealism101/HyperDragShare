@@ -17,6 +17,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -222,7 +224,21 @@ internal object ActivationMonitor {
             publish(ActivationLevel.Checking)
         }
 
-        val rootGranted = withContext(Dispatchers.IO) { ModuleActivation.hasRootAccess() }
+        // Forking `su` and waiting for the framework binder do not depend on each other, so
+        // both start before either answer is read. Only the portal branch needs the binder.
+        val (rootGranted, service) = coroutineScope {
+            val serviceProbe = if (accessibilityMode) {
+                null
+            } else {
+                async { XposedServiceStatus.awaitService() }
+            }
+            val granted = withContext(Dispatchers.IO) { ModuleActivation.hasRootAccess() }
+            if (!granted) {
+                // Nothing below runs without root, so the binder wait is dropped, not awaited.
+                serviceProbe?.cancel()
+            }
+            granted to if (granted) serviceProbe?.await() else null
+        }
         if (!rootGranted) {
             publish(ActivationLevel.Inactive, rootGranted = false)
             return
@@ -250,7 +266,6 @@ internal object ActivationMonitor {
         // The framework answers from this process, so enablement, scope and the loaded build come
         // back at once. The handshake below is only needed for the portal's own root grant, or as
         // the whole answer when no framework binder reached this process.
-        val service = XposedServiceStatus.awaitService()
         val frameworkLabel = service?.let { XposedServiceStatus.frameworkLabel(it) }
         val scopeIncludesPortal = if (service == null) {
             null
@@ -292,6 +307,17 @@ internal object ActivationMonitor {
                 }
             }
             if (injected) {
+                // The injection is settled by now, so its row is published before the second
+                // report is awaited instead of staying on 检测中 for as long as that wait allows.
+                if (showsCheckingCard) {
+                    publish(
+                        level = ActivationLevel.Checking,
+                        rootGranted = true,
+                        frameworkLabel = frameworkLabel,
+                        scopeIncludesPortal = scopeIncludesPortal,
+                        portalInjection = PortalInjectionState.Injected,
+                    )
+                }
                 // The portal probes its own root grant on a second thread and answers again.
                 portalRootGranted = awaitPortalReport(context, PORTAL_ROOT_REPORT_TIMEOUT_MS) {
                     ModuleActivation.isCurrentBuildPortalRootGranted(context)

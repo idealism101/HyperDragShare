@@ -1,6 +1,6 @@
 # HyperDragShare 完整实现说明
 
-本文记录 HyperDragShare `1.8.0`（`versionCode 75`）的当前完整实现、关键兼容性选择和已验证
+本文记录 HyperDragShare `1.8.1`（`versionCode 76`）的当前完整实现、关键兼容性选择和已验证
 设备参数。实现目标是：传送门识别长按文字或图片后，在手指附近立即显示预览；同一根手指
 无需抬起即可继续拖动；简洁和现代样式可按设置出现在上、下、左、右或近手侧，流光样式在底部显示横向分享菜单，环形样式可从左右边缘展开半圆
 菜单；停留在可滚动热区时自动滚动；松手落在目标上时直接分享。
@@ -466,8 +466,9 @@ TopAppBar 统一消费 system bars、display cutout 与底部导航栏 insets，
 
 模块进程一启动就由 `DragShareApplication` 调用 `XposedServiceStatus.register()` 注册
 `XposedServiceHelper.OnServiceListener`。框架在进程启动时把 binder 发给模块，helper 会把早到的
-binder 重放给新监听器，因此注册时机不敏感。`ActivationMonitor` 的传送门分支先 `awaitService()`
-最多等 `1.5 s`，拿到 `XposedService` 后在同一个进程内直接问框架三件事：
+binder 重放给新监听器，因此注册时机不敏感。`ActivationMonitor` 用一个 `coroutineScope` 并发起
+`su -c id -u` 的 Root 探测与 `awaitService()`（最多等 `1.5 s`）：两者互不依赖，串行只会白等一份
+延迟，Root 未授权时 binder 等待直接取消。拿到 `XposedService` 后在同一个进程内直接问框架三件事：
 
 | 检测项 | 框架来源 |
 | --- | --- |
@@ -499,7 +500,8 @@ binder 重放给新监听器，因此注册时机不敏感。`ActivationMonitor`
 `12 s`（冷启动传送门需要几秒），确认注入后再最多等 `6 s` 拿传送门 Root 探测的第二份报告。若注入
 报告始终没来，就用 root `pidof com.miui.contentextension` 判断传送门是否根本没起来，从而把
 “传送门未运行”和“未注入”分开显示；框架已经回答注入状态时不需要这一步。握手期间已经由框架回答
-的检测项会先发布到卡片上，因此冷启动传送门时整张卡片不会停在“检测中”等满超时。`su` 的超时按
+的检测项会先发布到卡片上，注入一旦确认也立即发布，因此冷启动传送门时整张卡片不会停在“检测中”
+等满超时，“LSPosed 注入”也不会被后面那 `6 s` 的传送门 Root 等待压住。`su` 的超时按
 用途区分：首次授权可能要等 root 管理器弹窗，`id -u` 给 `12 s`，其余命令 `6 s`。该流程不会调用 `force-stop`，也不会启动或停止
 `com.miui.contentcatcher`。若传送门进程仍运行着启用模块前或旧 APK 的代码，启动命令不会伪造激活
 状态，仍需让 LSPosed 重新启动传送门作用域。
