@@ -210,6 +210,9 @@ internal class DragShareController(
     private var shareTargets: List<ShareTarget> = ArrayList()
     private var selectedTarget: ShareTarget? = null
     private var menuShown = false
+    private var triggerButtonView: View? = null
+    private var triggerButtonArmed = false
+    private val triggerButtonTimeout = Runnable { dismissButtonModeOnMain() }
     private var sensorManager: SensorManager? = null
     private var nearHandSensor: Sensor? = null
     private var nearHandSensorRegistered = false
@@ -429,6 +432,9 @@ internal class DragShareController(
                 previewWindow.show()
             } else {
                 windowManager.addView(previewView, previewParams)
+            }
+            if (TRIGGER_BUTTON_MODE) {
+                showTriggerButtonOnMain(requestedInitialX, requestedInitialY)
             }
             active = true
             pendingPortalHostFloatWindowSuppression = false
@@ -1037,11 +1043,20 @@ internal class DragShareController(
         handlePointerOnMain(x, y)
         if (action == MotionEvent.ACTION_UP) {
             log("gesture finished source=" + source + " menu=" + menuShown)
-            finishGestureOnMain(true, beforeFinish)
+            if (TRIGGER_BUTTON_MODE) {
+                armTriggerButtonOnMain(beforeFinish)
+            } else {
+                finishGestureOnMain(true, beforeFinish)
+            }
         }
     }
     private fun handlePointerOnMain(x: Float, y: Float) {
         if (!active || !x.isFinite() || !y.isFinite()) {
+            return
+        }
+        // 按钮模式：按钮只在识别时摆放一次，手势期间不跟随、不展开菜单，
+        // 因此没有逐帧 updateViewLayout，也就没有跟手卡顿。
+        if (TRIGGER_BUTTON_MODE) {
             return
         }
         lastX = x
@@ -1731,6 +1746,172 @@ internal class DragShareController(
         }
     }
 
+    // ---------------------------------------------------------------------
+    // 按钮触发模式
+    //
+    // 长按识别后只在手指旁探出一个小按钮，手势期间不跟手、不展开菜单；
+    // 抬手（ACTION_UP）后按钮才转为可触摸，点按它才展开分享菜单，
+    // 再点按菜单里的目标完成分享。Android 一次手势在 ACTION_DOWN 时就定死了
+    // 接收窗口，所以按钮必须等抬手后才能接管触摸，这正好也省掉了逐帧布局。
+    // ---------------------------------------------------------------------
+
+    private fun showTriggerButtonOnMain(x: Float, y: Float) {
+        removeTriggerButtonOnMain()
+        val size = dp(TRIGGER_BUTTON_SIZE_DP)
+        val button = TextView(context)
+        button.text = TRIGGER_BUTTON_LABEL
+        button.gravity = Gravity.CENTER
+        button.setTextColor(Color.WHITE)
+        button.textSize = 13f
+        val background = GradientDrawable()
+        background.shape = GradientDrawable.OVAL
+        background.setColor(Color.parseColor("#E63F7FFF"))
+        button.background = background
+        val params = overlayParams(size, size, "drag-share-trigger")
+        params.x = Math.round(x - size / 2f).coerceIn(0, Math.max(0, screenWidth - size))
+        params.y = Math.round(y - size - dp(12)).coerceIn(0, Math.max(0, screenHeight - size))
+        try {
+            windowManager.addView(button, params)
+            triggerButtonView = button
+            log("trigger button shown")
+        } catch (error: Throwable) {
+            triggerButtonView = null
+            log("unable to add trigger button", error)
+        }
+    }
+
+    private fun removeTriggerButtonOnMain() {
+        mainHandler.removeCallbacks(triggerButtonTimeout)
+        val button = triggerButtonView ?: return
+        triggerButtonView = null
+        triggerButtonArmed = false
+        try {
+            windowManager.removeViewImmediate(button)
+        } catch (ignored: Throwable) {
+            // Already removed or never attached.
+        }
+    }
+
+    private fun armTriggerButtonOnMain(afterDeactivate: Runnable?) {
+        if (!active) {
+            return
+        }
+        active = false
+        stopEdgeScroll()
+        backgroundTouchBlocker.stop()
+        afterDeactivate?.run()
+        logGestureEnd(session, null, false)
+        val button = triggerButtonView
+        if (button == null) {
+            removeGestureViews(true)
+            return
+        }
+        val params = button.layoutParams as? WindowManager.LayoutParams
+        if (params != null) {
+            params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            try {
+                windowManager.updateViewLayout(button, params)
+            } catch (error: Throwable) {
+                log("unable to arm trigger button", error)
+            }
+        }
+        triggerButtonArmed = true
+        button.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_UP -> {
+                    onTriggerButtonClicked()
+                    true
+                }
+                MotionEvent.ACTION_OUTSIDE -> {
+                    dismissButtonModeOnMain()
+                    true
+                }
+                else -> true
+            }
+        }
+        mainHandler.postDelayed(triggerButtonTimeout, TRIGGER_BUTTON_TIMEOUT_MS)
+        log("trigger button armed")
+    }
+
+    private fun onTriggerButtonClicked() {
+        if (!triggerButtonArmed) {
+            return
+        }
+        triggerButtonArmed = false
+        mainHandler.removeCallbacks(triggerButtonTimeout)
+        removeTriggerButtonOnMain()
+        log("trigger button clicked")
+        showMenuOnMain()
+        makeMenuTouchableOnMain()
+    }
+
+    private fun makeMenuTouchableOnMain() {
+        val menu = menuView
+        if (menu == null) {
+            dismissButtonModeOnMain()
+            return
+        }
+        val params = menu.layoutParams as? WindowManager.LayoutParams
+        if (params != null) {
+            params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            try {
+                windowManager.updateViewLayout(menu, params)
+            } catch (error: Throwable) {
+                log("unable to make menu touchable", error)
+            }
+        }
+        menu.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_UP -> {
+                    updateSelectedTarget(event.rawX, event.rawY)
+                    launchFromButtonOnMain()
+                    true
+                }
+                MotionEvent.ACTION_OUTSIDE -> {
+                    dismissButtonModeOnMain()
+                    true
+                }
+                else -> true
+            }
+        }
+        mainHandler.postDelayed(triggerButtonTimeout, TRIGGER_BUTTON_TIMEOUT_MS)
+    }
+
+    private fun launchFromButtonOnMain() {
+        val finished = session
+        val target = selectedTarget
+        if (finished == null || target == null) {
+            dismissButtonModeOnMain()
+            return
+        }
+        if (!finished.payload.isImage() || target.isSaveToLocal() || finished.stagedUri != null) {
+            launchShare(finished, target)
+        } else {
+            finished.pendingTarget = target
+            keepOverlayForPendingLaunch()
+            showToast("正在准备图片")
+        }
+        removeGestureViews(true)
+    }
+
+    private fun dismissButtonModeOnMain() {
+        triggerButtonArmed = false
+        removeTriggerButtonOnMain()
+        if (!active) {
+            val current = session
+            if (current != null && current.pendingTarget == null) {
+                current.cancelled = true
+            }
+            removeGestureViews(true)
+        }
+    }
+
     private fun launchPendingShare(pendingSession: Session) {
         val target = pendingSession.pendingTarget
         if (target == null || (pendingSession.stagedUri == null && !target.isSaveToLocal())) {
@@ -2075,6 +2256,7 @@ internal class DragShareController(
         unregisterNearHandSensor()
         cancelModernMenuDispose()
         cancelLinearMenuFadeOut()
+        removeTriggerButtonOnMain()
         if (!animatePreviewExit) {
             removePendingPreviewExitImmediately()
         }
@@ -2545,6 +2727,12 @@ internal class DragShareController(
         private const val CIRCLE_EDGE_SOFT_DISTANCE_DP = 180
         private const val CIRCLE_EDGE_OPEN_DELAY_MS = 200L
         private const val DUPLICATE_EVENT_WINDOW_MS = 2L
+        // 开发分支开关：true = 长按探出小按钮（点按才出菜单），false = 原来的跟手拖拽。
+        // 稳定之后应该升格成 DragShareSettings 里的正式设置项。
+        private const val TRIGGER_BUTTON_MODE = true
+        private const val TRIGGER_BUTTON_SIZE_DP = 48
+        private const val TRIGGER_BUTTON_TIMEOUT_MS = 10_000L
+        private const val TRIGGER_BUTTON_LABEL = "分享"
         private const val NEAR_HAND_TILT_THRESHOLD = 0.14f
 
         private fun rotationVectorRoll(values: FloatArray): Float {
