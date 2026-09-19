@@ -91,6 +91,21 @@ internal class DragShareController(
     private var screenHeight = 0
     private var topInset = 0
     private var bottomInset = 0
+    // ---------- 磨砂手势状态机 ----------
+    // 生命周期（只有一个样式：长按 → 环形填充 → 点环 → 磨砂菜单）：
+    //   showOnMain            建 Session + 进度环，active=true（根拖拽期间压制/延迟宿主调用）；
+    //   手指抬起(onFrostedGestureUp)
+    //     ├─ 环未填满         → 取消：清 session、移除视图；
+    //     └─ 环已填满         → active=false、宿主调用已重放，环留在原位
+    //                            等待点按（ringAwaitingTap=true）。
+    //   点环                  → 移除环、弹磨砂菜单（Dialog）；
+    //   点菜单以外            → 菜单 Dialog 的 ACTION_OUTSIDE → dismissFrostedOnMain；
+    //   点功能/目标           → 执行后 removeGestureViews 收尾。
+    // 关键不变量：
+    //   * ringAwaitingTap=true 时，环收到 ACTION_OUTSIDE 只做静默清理 —— 绝不重放
+    //     宿主调用（那会把下一次长按刚入队的调用提前重放，毒化 Taplus 任务状态）；
+    //   * dismissFrostedOnMain 仅在 wasActive 时补重放，理由同上；
+    //   * 所有移除路径都经 removeGestureViews / removeFrostedViews 统一复位标志。
     private var progressRingView: ProgressRingView? = null
     private var frostedMenuView: FrostedMenuOverlayView? = null
     private var frostedMenuWindow: FrostedMenuWindow? = null
