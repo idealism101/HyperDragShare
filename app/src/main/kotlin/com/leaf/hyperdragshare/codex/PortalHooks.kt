@@ -572,38 +572,15 @@ internal object PortalHooks {
     }
 
     private fun deferHostCallIfRootDragActive(chain: Chain, kind: String): Boolean {
-        // 实验性改动：**不再压制宿主调用**。
-        // 之前的逻辑是在根拖拽期间把 cancelTask 等宿主调用入队、抬手后重放；
-        // 实测这套"延迟-重放"的收尾时序有漏洞（残留环的 ACTION_OUTSIDE / 背板点击
-        // 会触发 flush 或漏 flush），导致下一次长按唤不出、手势状态卡死。
-        // 现在永远返回 false：宿主调用立即照常执行，钩子不拦截、不入队。
-        // DEFERRED_HOST_CALLS / flushDeferredHostCalls 保留但队列恒为空。
+        // 宿主调用压制机制（把 cancelTask 等入队、抬手后经 flushDeferredHostCalls 重放）
+        // 已按需求禁用：延迟-重放的收尾时序存在漏洞 —— 等待点按的残留环收到
+        // ACTION_OUTSIDE 时会触发 flush，若此刻下一次长按已开始，会把新手势刚入队的
+        // 宿主调用提前重放，导致后续长按全部唤不出（手势状态卡死）。
+        // 返回 false = 不拦截，宿主调用立即照常执行；
+        // DEFERRED_HOST_CALLS / flushDeferredHostCalls 保留，队列恒为空。
         return false
     }
 
-    private fun deferHostCallIfRootDragActiveDisabled(chain: Chain, kind: String): Boolean {
-        synchronized(DEFERRED_HOST_LOCK) {
-            val current = controller
-            if (current == null || !current.isActive() || !hasLiveRootSource()) {
-                return false
-            }
-            for (existing in DEFERRED_HOST_CALLS) {
-                if (kind == existing.kind) {
-                    return true
-                }
-            }
-            DEFERRED_HOST_CALLS.addLast(
-                DeferredHostCall(
-                    kind,
-                    chain.executable,
-                    chain.thisObject,
-                    chain.args.toTypedArray(),
-                ),
-            )
-        }
-        log("deferred host call=$kind until root ACTION_UP")
-        return true
-    }
 
     /**
      * 会话收尾兜底：把被压制的宿主调用立刻重放掉。
