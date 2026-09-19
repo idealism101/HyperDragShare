@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="620" viewBox="0 0 300 620">
+  <defs>
+    <clipPath id="s3"><rect width="300" height="620" rx="18"/></clipPath>
+  </defs>
+  <g clip-path="url(#s3)">
+    <rect width="300" height="620" fill="#FFFFFF"/>
+    <!-- 顶部工具卡 -->
+    <rect x="10" y="14" width="280" height="44" rx="14" fill="#F0EFEB"/>
+    <g font-family="sans-serif" text-anchor="middle">
+      <text x="30" y="41" font-size="14" fill="#1F1F1F">‹</text>
+      <text x="150" y="41" font-size="14" fill="#1F1F1F">菜单排序</text>
+      <rect x="204" y="22" width="38" height="24" rx="7" fill="rgba(0,0,0,.06)"/>
+      <text x="223" y="39" font-size="11" fill="#1F1F1F">背板</text>
+      <rect x="246" y="22" width="38" height="24" rx="7" fill="rgba(0,0,0,.06)"/>
+      <text x="265" y="39" font-size="11" fill="#1F1F1F">编辑</text>
+    </g>
+    <!-- 排序卡（半透明深灰） -->
+    <rect x="10" y="70" width="280" height="296" rx="14" fill="#4A4A52" fill-opacity="0.82"/>
+    <g font-family="sans-serif" text-anchor="middle">
+      <!-- 行 1 -->
+      <rect x="20" y="82" width="40" height="40" rx="10" fill="#E24B4A"/><text x="40" y="136" font-size="10" fill="#FFFFFF">微信</text>
+      <rect x="85" y="82" width="40" height="40" rx="10" fill="#378ADD"/><text x="105" y="136" font-size="10" fill="#FFFFFF">浏览器</text>
+      <rect x="150" y="82" width="40" height="40" rx="10" fill="#1D9E75"/><text x="170" y="136" font-size="10" fill="#FFFFFF">笔记</text>
+      <rect x="215" y="82" width="40" height="40" rx="10" fill="#BA7517"/><text x="235" y="136" font-size="10" fill="#FFFFFF">相册</text>
+      <circle cx="24" cy="86" r="9" fill="#E24B4A" stroke="#FFFFFF"/><text x="24" y="90" font-size="11" fill="#FFFFFF">−</text>
+      <!-- 行 2 -->
+      <rect x="20" y="146" width="40" height="40" rx="10" fill="#7F77DD"/><text x="40" y="200" font-size="10" fill="#FFFFFF">音乐</text>
+      <rect x="85" y="146" width="40" height="40" rx="10" fill="#D4537E"/><text x="105" y="200" font-size="10" fill="#FFFFFF">淘宝</text>
+      <rect x="150" y="146" width="40" height="40" rx="10" fill="#639922"/><text x="170" y="200" font-size="10" fill="#FFFFFF">邮件</text>
+      <rect x="215" y="146" width="40" height="40" rx="10" fill="#D85A30"/><text x="235" y="200" font-size="10" fill="#FFFFFF">地图</text>
+      <circle cx="89" cy="150" r="9" fill="#E24B4A" stroke="#FFFFFF"/><text x="89" y="154" font-size="11" fill="#FFFFFF">−</text>
+      <!-- 行 3（插入占位示意） -->
+      <rect x="20" y="210" width="40" height="40" rx="10" fill="#378ADD"/><text x="40" y="264" font-size="10" fill="#FFFFFF">日历</text>
+      <rect x="85" y="210" width="40" height="40" rx="10" fill="#1D9E75" stroke="#7F77DD" stroke-dasharray="4 3"/><text x="105" y="264" font-size="10" fill="#534AB7">放这里</text>
+      <rect x="150" y="210" width="40" height="40" rx="10" fill="#BA7517"/><text x="170" y="264" font-size="10" fill="#FFFFFF">计算器</text>
+      <rect x="215" y="210" width="40" height="40" rx="10" fill="#7F77DD"/><text x="235" y="264" font-size="10" fill="#FFFFFF">天气</text>
+      <!-- 行 4 -->
+      <rect x="20" y="274" width="40" height="40" rx="10" fill="#D4537E"/><text x="40" y="328" font-size="10" fill="#FFFFFF">时钟</text>
+      <rect x="85" y="274" width="40" height="40" rx="10" fill="#639922"/><text x="105" y="328" font-size="10" fill="#FFFFFF">网盘</text>
+      <rect x="150" y="274" width="40" height="40" rx="10" fill="#D85A30"/><text x="170" y="328" font-size="10" fill="#FFFFFF">飞书</text>
+      <rect x="215" y="274" width="40" height="40" rx="10" fill="#378ADD"/><text x="235" y="328" font-size="10" fill="#FFFFFF">剪映</text>
+    </g>
+    <!-- 页码 -->
+    <g font-family="sans-serif" text-anchor="middle">
+      <text x="130" y="352" font-size="14" fill="#8A8A92">‹</text>
+      <circle cx="145" cy="347" r="4" fill="#F1EFE8"/>
+      <circle cx="158" cy="347" r="3" fill="#8A8A92"/>
+      <circle cx="171" cy="347" r="3" fill="#8A8A92"/>
+      <text x="182" y="352" font-size="14" fill="#8A8A92">›</text>
+    </g>
+    <!-- 已移除 浮动卡（独立） -->
+    <rect x="10" y="380" width="280" height="128" rx="14" fill="#4A4A52" fill-opacity="0.82"/>
+    <g font-family="sans-serif">
+      <text x="24" y="404" font-size="13" fill="#EDEFF2" font-weight="500">已移除</text>
+      <text x="274" y="404" font-size="12" fill="#B4B2A9" text-anchor="end">＋ 更多应用</text>
+    </g>
+    <g font-family="sans-serif" text-anchor="middle">
+      <rect x="24" y="414" width="32" height="32" rx="9" fill="#E24B4A" opacity="0.8"/><text x="40" y="466" font-size="10" fill="#FFFFFF">录音机</text>
+      <rect x="90" y="414" width="32" height="32" rx="9" fill="#378ADD" opacity="0.8"/><text x="106" y="466" font-size="10" fill="#FFFFFF">京东</text>
+      <rect x="156" y="414" width="32" height="32" rx="9" fill="#7F77DD" opacity="0.8"/><text x="172" y="466" font-size="10" fill="#FFFFFF">网盘</text>
+      <rect x="222" y="414" width="32" height="32" rx="9" fill="#1D9E75" opacity="0.8"/><text x="238" y="466" font-size="10" fill="#FFFFFF">米家</text>
+    </g>
+    <!-- 说明标注 -->
+    <text x="150" y="530" font-family="sans-serif" font-size="12" fill="#8A8A92" text-anchor="middle">菜单排序：分页网格 + 拖拽排序 + 已移除浮动卡</text>
+    <text x="150" y="550" font-family="sans-serif" font-size="11" fill="#B4B2A9" text-anchor="middle">虚线框 = 长按已移除图标拖回时的插入位置</text>
+  </g>
+  <rect x="0.5" y="0.5" width="299" height="619" rx="17.5" fill="none" stroke="#888780"/>
+</svg>

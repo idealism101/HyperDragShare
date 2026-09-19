@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="620" viewBox="0 0 300 620">
+  <defs>
+    <clipPath id="screen"><rect x="0" y="0" width="300" height="620" rx="18"/></clipPath>
+  </defs>
+  <!-- 桌面壁纸（示意） -->
+  <g clip-path="url(#screen)">
+    <rect width="300" height="620" fill="#16324F"/>
+    <circle cx="240" cy="70" r="22" fill="#F4EED8"/>
+    <path d="M-20 470 L120 330 L260 470 Z" fill="#0F4C5C"/>
+    <path d="M120 470 L240 360 L340 470 Z" fill="#274B63"/>
+  </g>
+  <!-- 磨砂背板（半透明深灰圆角板） -->
+  <rect x="10" y="150" width="280" height="380" rx="16" fill="#3A3A42" fill-opacity="0.78"/>
+  <!-- 功能 chip 行 -->
+  <g font-family="sans-serif" text-anchor="middle">
+    <g>
+      <rect x="18" y="162" width="48" height="30" rx="15" fill="#5A5A64"/>
+      <text x="42" y="182" font-size="11" fill="#EDEFF2">分词</text>
+      <rect x="72" y="162" width="48" height="30" rx="15" fill="#5A5A64"/>
+      <text x="96" y="182" font-size="11" fill="#EDEFF2">保存</text>
+      <rect x="126" y="162" width="48" height="30" rx="15" fill="#5A5A64"/>
+      <text x="150" y="182" font-size="11" fill="#EDEFF2">分享</text>
+      <rect x="180" y="162" width="48" height="30" rx="15" fill="#5A5A64"/>
+      <text x="204" y="182" font-size="11" fill="#EDEFF2">翻译</text>
+      <rect x="234" y="162" width="48" height="30" rx="15" fill="#5A5A64"/>
+      <text x="258" y="182" font-size="11" fill="#EDEFF2">复制</text>
+    </g>
+    <!-- 4×5 应用网格 -->
+    <g>
+      <!-- 行 1 -->
+      <rect x="20" y="204" width="40" height="40" rx="10" fill="#E24B4A"/><text x="40" y="258" font-size="10" fill="#EDEFF2">微信</text>
+      <rect x="85" y="204" width="40" height="40" rx="10" fill="#378ADD"/><text x="105" y="258" font-size="10" fill="#EDEFF2">浏览器</text>
+      <rect x="150" y="204" width="40" height="40" rx="10" fill="#1D9E75"/><text x="170" y="258" font-size="10" fill="#EDEFF2">笔记</text>
+      <rect x="215" y="204" width="40" height="40" rx="10" fill="#BA7517"/><text x="235" y="258" font-size="10" fill="#EDEFF2">相册</text>
+      <!-- 行 2 -->
+      <rect x="20" y="268" width="40" height="40" rx="10" fill="#7F77DD"/><text x="40" y="322" font-size="10" fill="#EDEFF2">音乐</text>
+      <rect x="85" y="268" width="40" height="40" rx="10" fill="#D4537E"/><text x="105" y="322" font-size="10" fill="#EDEFF2">淘宝</text>
+      <rect x="150" y="268" width="40" height="40" rx="10" fill="#639922"/><text x="170" y="322" font-size="10" fill="#EDEFF2">邮件</text>
+      <rect x="215" y="268" width="40" height="40" rx="10" fill="#D85A30"/><text x="235" y="322" font-size="10" fill="#EDEFF2">地图</text>
+      <!-- 行 3 -->
+      <rect x="20" y="332" width="40" height="40" rx="10" fill="#378ADD"/><text x="40" y="386" font-size="10" fill="#EDEFF2">日历</text>
+      <rect x="85" y="332" width="40" height="40" rx="10" fill="#1D9E75"/><text x="105" y="386" font-size="10" fill="#EDEFF2">设置</text>
+      <rect x="150" y="332" width="40" height="40" rx="10" fill="#BA7517"/><text x="170" y="386" font-size="10" fill="#EDEFF2">计算器</text>
+      <rect x="215" y="332" width="40" height="40" rx="10" fill="#7F77DD"/><text x="235" y="386" font-size="10" fill="#EDEFF2">天气</text>
+      <!-- 行 4 -->
+      <rect x="20" y="396" width="40" height="40" rx="10" fill="#D4537E"/><text x="40" y="450" font-size="10" fill="#EDEFF2">时钟</text>
+      <rect x="85" y="396" width="40" height="40" rx="10" fill="#639922"/><text x="105" y="450" font-size="10" fill="#EDEFF2">网盘</text>
+      <rect x="150" y="396" width="40" height="40" rx="10" fill="#D85A30"/><text x="170" y="450" font-size="10" fill="#EDEFF2">飞书</text>
+      <rect x="215" y="396" width="40" height="40" rx="10" fill="#378ADD"/><text x="235" y="450" font-size="10" fill="#EDEFF2">剪映</text>
+    </g>
+    <!-- 底部翻页 -->
+    <text x="130" y="505" font-size="14" fill="#B4B2A9">‹</text>
+    <circle cx="145" cy="500" r="4" fill="#F1EFE8"/>
+    <circle cx="158" cy="500" r="3" fill="#8A8A92"/>
+    <circle cx="171" cy="500" r="3" fill="#8A8A92"/>
+    <text x="182" y="505" font-size="14" fill="#B4B2A9">›</text>
+    <!-- 说明标注 -->
+    <text x="150" y="560" font-size="12" fill="#8A8A92" text-anchor="middle">磨砂菜单（背板透明度/暗黑可调）</text>
+  </g>
+  <rect x="0.5" y="0.5" width="299" height="619" rx="17.5" fill="none" stroke="#888780"/>
+</svg>

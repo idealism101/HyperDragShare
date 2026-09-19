@@ -1,12 +1,22 @@
 # HyperDragShare
 
-HyperDragShare 是一个 Android LSPosed 模块，为 HyperOS 传送门的文字和图片长按提供同一手势内的跟手预览与分享菜单。
+HyperDragShare 是一个 Android LSPosed 模块，为 HyperOS 传送门的文字和图片长按提供同一手势内的分享菜单。
+
+<p align="center">
+  <img src="docs/mockups/frosted-menu.svg" width="30%" alt="磨砂菜单"/>
+  <img src="docs/mockups/menu-order.svg" width="30%" alt="菜单排序"/>
+  <img src="docs/mockups/settings.svg" width="30%" alt="设置"/>
+</p>
+<p align="center"><sub>磨砂菜单（背板可调）· 菜单排序页（分页 + 拖拽排序 + 已移除拖回）· 设置（背板三滑杆 + 翻译应用）</sub></p>
 
 ## 功能
 
-- 使用 Root evdev 输入，在传送门识别长按后继续跟随当前手指。
-- 支持文字分享、图片分享、保存图片到本地和文本分词。
-- 提供简洁、流光和环形三种可配置的分享菜单，以及深浅色外观、目标排序和隐藏设置。
+- 使用 Root evdev 输入，在传送门识别长按后继续跟随当前手指：**长按 → 环形填充 → 点环弹出磨砂菜单**。
+- 磨砂菜单背板支持**透明度 / 磨砂程度 / 暗黑程度**三挡滑杆实时调节，排序页与菜单共用同一套设置。
+- 支持文字分享、图片分享、保存图片到本地、文本分词，以及**自定义翻译应用**（菜单一键跳转）。
+- **菜单排序页**：分页网格管理分享目标——图标 / 长条两种显示、编辑态长按拖动排序、
+  左上角 − 移除（自动补位）、下方「已移除」浮动卡点击加回或长按拖回插入排序；
+  长条模式下点整行即可复制应用包名。
 - 可选无障碍内容获取模式；该模式仍需要 Root 输入，且不会扩大 LSPosed 作用域。
 - 支持可关闭的系统日志或 root 保护的诊断文件导出；调试模式会记录输入节点与运行环境信息。
 
@@ -19,7 +29,7 @@ HyperDragShare 是一个 Android LSPosed 模块，为 HyperOS 传送门的文字
 
 ## 安装
 
-1. 从 [Releases](https://github.com/Leaf-lsgtky/HyperDragShare/releases) 下载 APK 并安装。
+1. 从 [Releases](https://github.com/idealism101/HyperDragShare/releases) 下载 APK 并安装。
 2. 在 LSPosed 中启用 HyperDragShare，作用域只勾选传送门。
 3. 重新启动传送门作用域进程后，打开 HyperDragShare 完成设置。
 
