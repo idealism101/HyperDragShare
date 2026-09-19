@@ -63,6 +63,9 @@ internal class DragShareController(
     }
 
     @Volatile private var active = false
+
+    /** 识别成功后停止跟随：为 true 期间忽略所有 MOVE，仅响应 UP/CANCEL 做收尾。 */
+    @Volatile private var followStopped = false
     @Volatile private var destroyed = false
     // startPick*Task can create Taplus' full-screen float view before this controller reaches
     // the main thread. Keep its window suppressed during that small handoff.
@@ -105,7 +108,8 @@ internal class DragShareController(
     //   * ringAwaitingTap=true 时，环收到 ACTION_OUTSIDE 只做静默清理 —— 绝不重放
     //     宿主调用（那会把下一次长按刚入队的调用提前重放，毒化 Taplus 任务状态）；
     //   * dismissFrostedOnMain 仅在 wasActive 时补重放，理由同上；
-    //   * 所有移除路径都经 removeGestureViews / removeFrostedViews 统一复位标志。
+    //   * 识别成功即 followStopped=true：不再跟随手指，MOVE 全部忽略；
+    //     抬手/取消后经 removeGestureViews 复位，下一次长按可立即发起。
     private var progressRingView: ProgressRingView? = null
     private var frostedMenuView: FrostedMenuOverlayView? = null
     private var frostedMenuWindow: FrostedMenuWindow? = null
@@ -169,6 +173,12 @@ internal class DragShareController(
         source: String?,
         beforeFinish: Runnable? = null,
     ) {
+        // 触摸事件处理约定：MOVE 一律忽略（无论识别成功与否），且不更新任何
+        // 簿记状态，杜绝 MOVE 触发任何中间状态变化；
+        // 状态复位仅发生在 UP / CANCEL / 触发元素被移除三种情况。
+        if (action == MotionEvent.ACTION_MOVE) {
+            return
+        }
         lastObservedX = x
         lastObservedY = y
         lastObservedEventTime = eventTime
@@ -311,7 +321,8 @@ internal class DragShareController(
         source: String?,
         beforeFinish: Runnable?,
     ) {
-        if (!active) {
+        if (!active || action == MotionEvent.ACTION_MOVE) {
+            // MOVE 一律忽略：识别成功与否都不改变任何状态。
             return
         }
         if (eventTime == lastHandledEventTime && action == lastHandledAction &&
@@ -363,9 +374,8 @@ internal class DragShareController(
         if (!active) {
             return
         }
-        active = false
-        // 手势被系统取消同样"本次拖拽已结束"，补一次宿主延迟调用重放，避免队列残留。
-        PortalHooks.flushDeferredHostCalls()
+        // 系统取消：一次性复位跟踪状态（压制已禁用，无可重放队列）。
+        resetTrackingState()
         removeGestureViews(true)
         val current = session
         if (current != null && current.pendingTarget == null) {
@@ -430,6 +440,8 @@ internal class DragShareController(
         ringFillStartUptime = SystemClock.uptimeMillis()
         mainHandler.post(ringFillRunnable)
         log("frosted ring mode started targets=" + shareTargets.size)
+        // 长按识别成功：立即停止跟随当前手指，后续 MOVE 一律忽略。
+        followStopped = true
     }
 
     private fun createProgressRing(x: Float, y: Float) {
@@ -521,6 +533,7 @@ internal class DragShareController(
                 // Already removed.
             }
             progressRingView = null
+            resetRingPhaseState()
         }
     }
 
@@ -569,18 +582,21 @@ internal class DragShareController(
     }
 
     private fun onFrostedGestureUp(afterDeactivate: Runnable?) {
-        // 抬手即"本次拖拽结束"：重放被压制的宿主调用（cancelOffset 等），让宿主把流水线跑完。
-        active = false
+        // 手指抬起：无论识别成功与否，一次性复位手势跟踪状态；
+        // 环是否保留取决于此前是否填满（填满则环等待点按）。
+        val wasFilled = ringFilled
+        val current = session
+        val cancelSession = current != null && current.pendingTarget == null
+        resetTrackingState()
         log(
-            "frosted gesture up ringFilled=" + ringFilled +
+            "frosted gesture up filled=" + wasFilled +
                 " replay=" + (afterDeactivate != null),
         )
         afterDeactivate?.run()
-        if (!ringFilled) {
+        if (!wasFilled) {
             // 没填满就松手 = 取消
-            val cur = session
-            if (cur != null && cur.pendingTarget == null) {
-                cur.cancelled = true
+            if (cancelSession) {
+                session?.cancelled = true
             }
             removeGestureViews(true)
             return
@@ -593,15 +609,7 @@ internal class DragShareController(
         // 关键：彻底结束磨砂手势态。面板/环是被"点外部/超时"收起的，此前不会经过抬手分支，
         // 若不在这里复位 active，showOnMain 的 `if (active) return` 会把之后所有长按都吞掉。
         log("dismissFrostedOnMain (outside/timeout)")
-        val wasActive = active
-        active = false
-        ringAwaitingTap = false
-        mainHandler.removeCallbacks(ringFillRunnable)
-        // 兜底：仅当手势仍在进行（宿主延迟调用还没重放）时才补重放；
-        // 否则会把下一次长按刚挂起的宿主调用提前重放，导致其失灵。
-        if (wasActive) {
-            PortalHooks.flushDeferredHostCalls()
-        }
+        resetTrackingState()
         val cur = session
         if (cur != null && cur.pendingTarget == null) {
             cur.cancelled = true
@@ -1111,6 +1119,31 @@ internal class DragShareController(
     /** 只剩磨砂一种样式：收尾就是拆掉环与菜单。 */
     private fun removeGestureViews(@Suppress("UNUSED_PARAMETER") animatePreviewExit: Boolean = false) {
         removeFrostedViews()
+        resetTrackingState()
+        resetRingPhaseState()
+    }
+
+    /**
+     * 手势跟踪状态一次性复位。仅在三处调用：手指抬起（UP）、事件被系统取消（CANCEL）、
+     * 触发元素被移除；除此之外任何路径都不得改动这些变量。
+     */
+    private fun resetTrackingState() {
+        active = false
+        followStopped = false
+        lastHandledEventTime = Long.MIN_VALUE
+        lastHandledAction = -1
+        lastX = 0f
+        lastY = 0f
+        edgeDirection = 0
+        inputSourceLogged = false
+        gestureSource = null
+        duplicateStartLogged = false
+        ringFillStartUptime = 0L
+    }
+
+    /** 环阶段状态复位：随环元素移除而触发。 */
+    private fun resetRingPhaseState() {
+        ringFilled = false
         ringAwaitingTap = false
     }
     private fun iconForTarget(target: ShareTarget): Drawable? =
