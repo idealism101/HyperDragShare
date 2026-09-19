@@ -2022,73 +2022,32 @@ private fun OrderPage(
                                         color = plateWeak,
                                     )
                                 } else {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(max = ORDER_REMOVED_AREA_MAX_DP.dp)
-                                            .verticalScroll(rememberScrollState())
-                                            .padding(horizontal = 14.dp, vertical = 2.dp),
-                                    ) {
-                                        removed.toList()
-                                            .chunked(ORDER_ICON_COLUMNS)
-                                            .forEach { rowItems ->
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(vertical = 3.dp),
-                                                ) {
-                                                    for (column in 0 until ORDER_ICON_COLUMNS) {
-                                                        val target = rowItems.getOrNull(column)
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .weight(1f)
-                                                                .height(56.dp),
-                                                            contentAlignment = Alignment.Center,
-                                                        ) {
-                                                            if (target != null) {
-                                                                RemovedAppChip(
-                                                                    target = target,
-                                                                    normalizedBitmap = iconBitmaps[
-                                                                        target.packageName(),
-                                                                    ],
-                                                                    dragEnabled = editMode && !plateMode,
-                                                                    onPositioned = { offset ->
-                                                                        target.key()?.let { key ->
-                                                                            dragTracker.chipTopLefts[key] =
-                                                                                offset
-                                                                        }
-                                                                    },
-                                                                    onDragStart = {
-                                                                        target.key()?.let { key ->
-                                                                            dragTracker.chipTopLeft =
-                                                                                dragTracker
-                                                                                    .chipTopLefts[key]
-                                                                                    ?: Offset.Zero
-                                                                        }
-                                                                        bottomDragTarget = target
-                                                                        hoverSlot = -1
-                                                                    },
-                                                                    onDrag = { fingerLocal ->
-                                                                        updateBottomDrag(fingerLocal)
-                                                                    },
-                                                                    onDragEnd = { finishBottomDrag() },
-                                                                    onDragCancel = { finishBottomDrag() },
-                                                                    onClick = {
-                                                                        val usable =
-                                                                            SystemClock.uptimeMillis() -
-                                                                                lastBottomDragEndUptime >=
-                                                                                ORDER_TAP_GUARD_MS
-                                                                        if (usable) {
-                                                                            addBack(target)
-                                                                        }
-                                                                    },
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                    OrderRemovedGrid(
+                                        removed = removed.toList(),
+                                        iconBitmaps = iconBitmaps,
+                                        dragEnabled = editMode && !plateMode,
+                                        onPositioned = { target, offset ->
+                                            target.key()?.let { key ->
+                                                dragTracker.chipTopLefts[key] = offset
                                             }
-                                    }
+                                        },
+                                        onDragStart = { target ->
+                                            dragTracker.chipTopLeft =
+                                                dragTracker.chipTopLefts[target.key()] ?: Offset.Zero
+                                            bottomDragTarget = target
+                                            hoverSlot = -1
+                                        },
+                                        onDrag = { target, fingerLocal ->
+                                            updateBottomDrag(fingerLocal)
+                                        },
+                                        onDragEnd = { finishBottomDrag() },
+                                        onDragCancel = { finishBottomDrag() },
+                                        onClick = { target ->
+                                            if (SystemClock.uptimeMillis() - lastBottomDragEndUptime >= ORDER_TAP_GUARD_MS) {
+                                                addBack(target)
+                                            }
+                                        },
+                                    )
                                 }
                             }
                         }
@@ -2126,6 +2085,61 @@ private class DragTracker {
     /** 所有 chip 的窗口坐标（按包名键），布局变化时刷新。 */
     val chipTopLefts = HashMap<String, Offset>()
 }
+
+/** 「已移除」网格：多排图标 + 名称，点击加回、长按拖回排序网格。 */
+@Composable
+private fun OrderRemovedGrid(
+    removed: List<ShareTarget>,
+    iconBitmaps: Map<String, Bitmap>,
+    dragEnabled: Boolean,
+    onPositioned: (ShareTarget, Offset) -> Unit,
+    onDragStart: (ShareTarget) -> Unit,
+    onDrag: (ShareTarget, Offset) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+    onClick: (ShareTarget) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = ORDER_REMOVED_AREA_MAX_DP.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 14.dp, vertical = 2.dp),
+    ) {
+        removed.chunked(ORDER_ICON_COLUMNS).forEach { rowItems ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp),
+            ) {
+                for (column in 0 until ORDER_ICON_COLUMNS) {
+                    val target = rowItems.getOrNull(column)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (target != null) {
+                            RemovedAppChip(
+                                target = target,
+                                normalizedBitmap = iconBitmaps[target.packageName()],
+                                dragEnabled = dragEnabled,
+                                onPositioned = { offset -> onPositioned(target, offset) },
+                                onDragStart = { onDragStart(target) },
+                                onDrag = { fingerLocal -> onDrag(target, fingerLocal) },
+                                onDragEnd = { onDragEnd() },
+                                onDragCancel = { onDragCancel() },
+                                onClick = { onClick(target) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 /** 排序页小字：固定白色 + 细描影，不随背板/主题变色。 */
 @Composable
