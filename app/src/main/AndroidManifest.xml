@@ -19,6 +19,15 @@
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="text/plain" />
         </intent>
+        <!-- 翻译应用选择器：列出能处理文本的翻译类应用 -->
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TRANSLATE" />
+            <data android:mimeType="text/plain" />
+        </intent>
     </queries>
 
     <application

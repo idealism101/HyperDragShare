@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 1000" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <rect width="680" height="1000" fill="#f4f6fb"/>
+  <text x="34" y="46" font-size="26" font-weight="700" fill="#1f2a44">交互流程渲染图 v3（确认稿 · 非真机截图）</text>
+  <text x="34" y="74" font-size="14" fill="#5a6b8c">长按填充进度环 → 填满出现按钮 → 点按钮 → 深色对称菜单（左右翻页）</text>
+
+  <defs>
+    <g id="ringTrack">
+      <circle r="22" fill="none" stroke="#4285F4" stroke-width="14"/>
+    </g>
+  </defs>
+
+  <!-- Step 1: progress fill during long press -->
+  <g transform="translate(34,100)">
+    <rect width="612" height="230" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">① 长按中：进度环从 0 开始填充</text>
+    <text x="20" y="52" font-size="12.5" fill="#6b7a99">按住期间浅蓝段沿蓝环扫过；松手过早则回退消失（不触发）。</text>
+
+    <g transform="translate(120,140)">
+      <use href="#ringTrack"/>
+      <path d="M 0 -22 A 22 22 0 0 1 22 0" fill="none" stroke="#7EC9F5" stroke-width="14"/>
+    </g>
+    <text x="120" y="196" font-size="12" fill="#6b7a99" text-anchor="middle">25%</text>
+
+    <g transform="translate(300,140)">
+      <use href="#ringTrack"/>
+      <path d="M 0 -22 A 22 22 0 1 1 -12.9 17.8" fill="none" stroke="#7EC9F5" stroke-width="14"/>
+    </g>
+    <text x="300" y="196" font-size="12" fill="#6b7a99" text-anchor="middle">60%</text>
+
+    <g transform="translate(480,140)">
+      <circle r="22" fill="none" stroke="#7EC9F5" stroke-width="14"/>
+    </g>
+    <text x="480" y="196" font-size="12" fill="#6b7a99" text-anchor="middle">100% 填满</text>
+
+    <text x="20" y="222" font-size="12" fill="#2e7d57">✓ 填充时长 ≈ 长按触发时长（约 400~600ms，可调）</text>
+  </g>
+
+  <!-- Step 2: filled button idle -->
+  <g transform="translate(34,350)">
+    <rect width="612" height="150" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">② 填满：按钮出现在手指旁，待点</text>
+    <text x="20" y="52" font-size="12.5" fill="#6b7a99">整环变亮表示就绪；此时若不点，数秒后自动消失。</text>
+    <rect x="360" y="62" width="220" height="72" rx="14" fill="#0f1726"/>
+    <text x="378" y="104" font-size="12" fill="#cdd6ea">选中的内容…</text>
+    <g transform="translate(524,98)">
+      <circle r="22" fill="none" stroke="#7EC9F5" stroke-width="14"/>
+    </g>
+    <text x="20" y="120" font-size="12" fill="#2e7d57">✓ 按钮位置在长按点上方约 60px，不挡内容</text>
+  </g>
+
+  <!-- Step 3: menu -->
+  <g transform="translate(34,520)">
+    <rect width="612" height="420" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">③ 点按钮：弹出深色对称菜单（image#1 样式）</text>
+    <text x="20" y="52" font-size="12.5" fill="#6b7a99">上下两行、左右对称排布；主功能（分词/保存/分享…）做成圆角图标；可左右翻页。</text>
+
+    <!-- dark card -->
+    <rect x="60" y="72" width="400" height="170" rx="24" fill="#4a4a4c" opacity="0.96"/>
+    <!-- top row: main functions -->
+    <g fill="#ffffff">
+      <g transform="translate(96,100)">
+        <rect width="52" height="52" rx="14" fill="#6b6b6e"/>
+        <text x="26" y="24" font-size="11" fill="#ffffff" text-anchor="middle" font-weight="700">分词</text>
+        <rect x="10" y="32" width="32" height="6" rx="3" fill="#cfcfcf"/>
+      </g>
+      <g transform="translate(168,100)">
+        <rect width="52" height="52" rx="14" fill="#6b6b6e"/>
+        <path d="M26 12 v20 M18 24 l8 8 8-8" stroke="#ffffff" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <rect x="14" y="38" width="24" height="4" rx="2" fill="#cfcfcf"/>
+      </g>
+      <g transform="translate(240,100)">
+        <rect width="52" height="52" rx="14" fill="#6b6b6e"/>
+        <circle cx="16" cy="26" r="5" fill="#ffffff"/>
+        <circle cx="36" cy="16" r="5" fill="#ffffff"/>
+        <circle cx="36" cy="36" r="5" fill="#ffffff"/>
+        <path d="M20 23 L32 18 M20 29 L32 34" stroke="#ffffff" stroke-width="2.5"/>
+      </g>
+      <g transform="translate(312,100)">
+        <rect width="52" height="52" rx="14" fill="#6b6b6e"/>
+        <path d="M14 26 h20 M28 18 l8 8 -8 8" stroke="#ffffff" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <text x="26" y="46" font-size="9" fill="#cfcfcf" text-anchor="middle">译</text>
+      </g>
+      <g transform="translate(384,100)">
+        <rect width="52" height="52" rx="14" fill="#6b6b6e"/>
+        <rect x="14" y="14" width="24" height="20" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+        <rect x="20" y="38" width="12" height="3" rx="1.5" fill="#cfcfcf"/>
+      </g>
+    </g>
+    <text x="122" y="172" font-size="10.5" fill="#d9d9d9" text-anchor="middle">分词</text>
+    <text x="194" y="172" font-size="10.5" fill="#d9d9d9" text-anchor="middle">保存</text>
+    <text x="266" y="172" font-size="10.5" fill="#d9d9d9" text-anchor="middle">分享</text>
+    <text x="338" y="172" font-size="10.5" fill="#d9d9d9" text-anchor="middle">翻译</text>
+    <text x="410" y="172" font-size="10.5" fill="#d9d9d9" text-anchor="middle">复制</text>
+
+    <!-- divider -->
+    <rect x="80" y="184" width="360" height="1.5" fill="#5d5d60"/>
+
+    <!-- bottom row: share targets -->
+    <g transform="translate(96,196)">
+      <rect width="52" height="36" rx="10" fill="#3478f6"/><circle cx="26" cy="18" r="8" fill="#ffffff"/>
+    </g>
+    <g transform="translate(168,196)">
+      <rect width="52" height="36" rx="10" fill="#34a853"/><circle cx="26" cy="18" r="8" fill="#ffffff"/>
+    </g>
+    <g transform="translate(240,196)">
+      <rect width="52" height="36" rx="10" fill="#ea4335"/><path d="M20 18 l10-6 v12 z" fill="#ffffff"/>
+    </g>
+    <g transform="translate(312,196)">
+      <rect width="52" height="36" rx="10" fill="#fbbc04"/><circle cx="26" cy="18" r="8" fill="#ffffff"/>
+    </g>
+    <g transform="translate(384,196)">
+      <rect width="52" height="36" rx="10" fill="#6b6b6e"/><circle cx="26" cy="18" r="8" fill="none" stroke="#ffffff" stroke-width="2.5"/><text x="26" y="22" font-size="10" fill="#ffffff" text-anchor="middle">+</text>
+    </g>
+
+    <!-- paging -->
+    <path d="M 46 157 l -10 0 m 0 0 l 7 -6 m -7 6 l 7 6" stroke="#8a97b3" stroke-width="2.5" fill="none" transform="translate(6,0)"/>
+    <path d="M 474 157 l 10 0 m 10 0 l -7 -6 m 7 6 l -7 6" stroke="#8a97b3" stroke-width="2.5" fill="none" transform="translate(-4,0)"/>
+    <circle cx="248" cy="262" r="3.5" fill="#3c4043"/>
+    <circle cx="264" cy="262" r="3.5" fill="#c7cdd9"/>
+    <circle cx="280" cy="262" r="3.5" fill="#c7cdd9"/>
+
+    <!-- annotations -->
+    <text x="490" y="110" font-size="12.5" fill="#6b7a99">· 上行：主功能</text>
+    <text x="490" y="134" font-size="12.5" fill="#6b7a99">· 下行：分享目标</text>
+    <text x="490" y="158" font-size="12.5" fill="#6b7a99">· 左右滑动翻页</text>
+    <text x="490" y="182" font-size="12.5" fill="#6b7a99">· 深色半透明卡片</text>
+
+    <text x="20" y="300" font-size="12" fill="#2e7d57">✓ 点功能图标 → 执行（分词/保存/分享…）</text>
+    <text x="20" y="324" font-size="12" fill="#2e7d57">✓ 点目标图标 → 跳转该 App 分享</text>
+    <text x="20" y="348" font-size="12" fill="#2e7d57">✓ 点菜单外空白 → 整个菜单消失</text>
+    <text x="20" y="392" font-size="12" fill="#8a97b3">※ 上/下行放什么、每页几个，见下方待确认清单</text>
+  </g>
+</svg>

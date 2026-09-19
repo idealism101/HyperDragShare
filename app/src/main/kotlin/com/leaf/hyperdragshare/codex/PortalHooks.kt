@@ -274,17 +274,29 @@ internal object PortalHooks {
         }
         val context = (service as Context).applicationContext
         val settings = DragShareSettings.readFromProvider(context)
+        log("startPickTask reached method=" + (chain.executable as? Method)?.name)
         if (!settings.isPortalCaptureMode()) {
+            log("startPickTask skipped: capture mode off")
             return
         }
         applyPortalRuntime()
-        val current = controller ?: return
-        val content = PortalContentCaptureSource.capture(service) ?: return
+        val current = controller
+        if (current == null) {
+            log("startPickTask skipped: controller null")
+            return
+        }
+        val content = PortalContentCaptureSource.capture(service)
+        if (content == null) {
+            // 第二次长按唤不出环形的关键嫌疑：宿主静态 sContent/sIsTextMode 已被清空。
+            log("startPickTask skipped: capture() returned null (host static content empty)")
+            return
+        }
         val point = PortalContentCaptureSource.initialPoint(
             service,
             current.latestPointerX(),
             current.latestPointerY(),
         )
+        log("startPickTask show kind=" + content.kind)
         current.reservePortalHostFloatWindowSuppression()
         current.show(
             content,
@@ -339,7 +351,14 @@ internal object PortalHooks {
         }
     }
 
-    /** Returns true when the host callback has to be swallowed instead of reaching Taplus. */
+    /**
+     * 只"旁听"宿主回调：把 motion 抄一份给我们自己当手势源，然后**一律放行**宿主。
+     *
+     * 这里以前会吞掉回调（返回 true 时不 `chain.proceed()`），连我们没在用的手势也一起吞。
+     * 那会饿死宿主自己的 `onContentReceived` 流水线，导致它的 pick 任务永远收不到结束信号
+     * （`control=257`）→ 之后长按不再触发，只能靠别的交互把任务挤掉才恢复。
+     * 按需求去掉吞逻辑：永远 return false，让宿主照常跑。
+     */
     @Suppress("UNCHECKED_CAST")
     private fun handleCallback(chain: Chain): Boolean {
         try {
@@ -365,24 +384,9 @@ internal object PortalHooks {
             }
             if (motion is MotionEvent) {
                 dispatchMotion(MotionEvent.obtain(motion))
-                // A motion-only result is not valid Taplus pick content.
-                return true
-            }
-
-            if ("258" == control) {
-                // Taplus normally interprets a move as cancellation.
-                return true
             }
             if ("257" == control) {
-                val current = controller
-                if (deferHostCallIfRootDragActive(chain, "control-257")) {
-                    if (!controlIgnoredLogged) {
-                        controlIgnoredLogged = true
-                        log("ignoring host finish; waiting for root ACTION_UP")
-                    }
-                    return true
-                }
-                current?.finishFromControlEvent()
+                controller?.finishFromControlEvent()
             }
         } catch (error: Throwable) {
             log("callback handling failed", error)
@@ -568,6 +572,16 @@ internal object PortalHooks {
     }
 
     private fun deferHostCallIfRootDragActive(chain: Chain, kind: String): Boolean {
+        // 实验性改动：**不再压制宿主调用**。
+        // 之前的逻辑是在根拖拽期间把 cancelTask 等宿主调用入队、抬手后重放；
+        // 实测这套"延迟-重放"的收尾时序有漏洞（残留环的 ACTION_OUTSIDE / 背板点击
+        // 会触发 flush 或漏 flush），导致下一次长按唤不出、手势状态卡死。
+        // 现在永远返回 false：宿主调用立即照常执行，钩子不拦截、不入队。
+        // DEFERRED_HOST_CALLS / flushDeferredHostCalls 保留但队列恒为空。
+        return false
+    }
+
+    private fun deferHostCallIfRootDragActiveDisabled(chain: Chain, kind: String): Boolean {
         synchronized(DEFERRED_HOST_LOCK) {
             val current = controller
             if (current == null || !current.isActive() || !hasLiveRootSource()) {
@@ -589,6 +603,21 @@ internal object PortalHooks {
         }
         log("deferred host call=$kind until root ACTION_UP")
         return true
+    }
+
+    /**
+     * 会话收尾兜底：把被压制的宿主调用立刻重放掉。
+     *
+     * 正常路径靠 ACTION_UP 的 `beforeFinish` 回调重放；但磨砂菜单"点外部收起 / 超时收起 /
+     * 手势被系统取消"这些收尾路径没有抬手回调，若不兜底，`DEFERRED_HOST_CALLS` 会永久残留，
+     * 毒化宿主任务状态 → 之后 `startPickTextTask` 不再触发（表现为再长按唤不出）。
+     */
+    internal fun flushDeferredHostCalls() {
+        val pending = synchronized(DEFERRED_HOST_LOCK) { DEFERRED_HOST_CALLS.size }
+        if (pending > 0) {
+            log("session-end flush of deferred host calls count=" + pending)
+        }
+        replayDeferredHostCalls()
     }
 
     private fun replayDeferredHostCalls() {

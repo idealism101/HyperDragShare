@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 1000" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <rect width="680" height="1000" fill="#f4f6fb"/>
+  <text x="34" y="46" font-size="26" font-weight="700" fill="#1f2a44">交互流程渲染图 v7（确认稿 · 非真机截图）</text>
+  <text x="34" y="74" font-size="14" fill="#5a6b8c">长按：透明环 → 玻璃磨砂填充 → 填满直接弹菜单（上方 5 功能 + 下方 App 网格 4×5，左右翻页）</text>
+
+  <defs>
+    <g id="ringGuide">
+      <circle r="22" fill="none" stroke="#4285F4" stroke-width="14" opacity="0.12"/>
+    </g>
+    <g id="frost">
+      <path d="M 0 -22 A 22 22 0 0 1 22 0" fill="none" stroke="#DEE1E3" stroke-width="14" opacity="0.6" stroke-linecap="round"/>
+      <path d="M 0 -19 A 19 19 0 0 1 19 -6" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.45" stroke-linecap="round"/>
+    </g>
+  </defs>
+
+  <!-- Step 1: frosted progress fill -->
+  <g transform="translate(34,100)">
+    <rect width="612" height="210" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">① 长按中：透明环被「玻璃磨砂」由 0 填满</text>
+    <text x="20" y="52" font-size="12.5" fill="#6b7a99">底色透明（仅一条极淡蓝引导环）；按住越久磨砂段越长。中途松手 = 环消失、不触发。</text>
+    <g transform="translate(118,128)"><use href="#ringGuide"/><use href="#frost"/></g>
+    <text x="118" y="184" font-size="12" fill="#6b7a99" text-anchor="middle">25%</text>
+    <g transform="translate(296,128)">
+      <use href="#ringGuide"/>
+      <path d="M 0 -22 A 22 22 0 1 1 -12.9 17.8" fill="none" stroke="#DEE1E3" stroke-width="14" opacity="0.6" stroke-linecap="round"/>
+      <path d="M 0 -19 A 19 19 0 0 1 -6 -18.4" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.45" stroke-linecap="round"/>
+    </g>
+    <text x="296" y="184" font-size="12" fill="#6b7a99" text-anchor="middle">60%</text>
+    <g transform="translate(474,128)">
+      <circle r="22" fill="none" stroke="#DEE1E3" stroke-width="14" opacity="0.6"/>
+      <path d="M 0 -19 A 19 19 0 0 1 19 -6" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.45" stroke-linecap="round"/>
+    </g>
+    <text x="474" y="184" font-size="12" fill="#6b7a99" text-anchor="middle">100% 磨砂满环</text>
+  </g>
+
+  <!-- Step 2: compact menu -->
+  <g transform="translate(34,330)">
+    <rect width="612" height="600" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">② 填满 → 直接弹出菜单（无需再点按钮）</text>
+    <text x="20" y="52" font-size="12.5" fill="#6b7a99">磨砂环就地淡出，菜单在原位附近展开；抬手后菜单即可点。</text>
+
+    <!-- ===== function card (top) — 1 row x 5 cols ===== -->
+    <clipPath id="fnClip"><rect x="76" y="72" width="460" height="84" rx="18"/></clipPath>
+    <g clip-path="url(#fnClip)">
+      <circle cx="170" cy="112" r="72" fill="#8ab4f8" opacity="0.5"/>
+      <circle cx="468" cy="120" r="84" fill="#f6b26b" opacity="0.45"/>
+    </g>
+    <rect x="76" y="72" width="460" height="84" rx="18" fill="#DEE1E3" opacity="0.62"/>
+    <g transform="translate(100,84)"><rect width="40" height="40" rx="11" fill="#6b6b6e"/><text x="20" y="25" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">分词</text></g>
+    <g transform="translate(192,84)"><rect width="40" height="40" rx="11" fill="#6b6b6e"/><path d="M20 10 v16 M14 20 l6 6 6-6" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round"/></g>
+    <g transform="translate(284,84)"><rect width="40" height="40" rx="11" fill="#6b6b6e"/><circle cx="13" cy="20" r="3.6" fill="#ffffff"/><circle cx="27" cy="13" r="3.6" fill="#ffffff"/><circle cx="27" cy="27" r="3.6" fill="#ffffff"/><path d="M16 18 L26 14 M16 22 L26 26" stroke="#ffffff" stroke-width="2"/></g>
+    <g transform="translate(376,84)"><rect width="40" height="40" rx="11" fill="#6b6b6e"/><path d="M11 20 h15 M24 14 l6 6 -6 6" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round"/><text x="20" y="37" font-size="9" fill="#cfcfcf" text-anchor="middle">译</text></g>
+    <g transform="translate(468,84)"><rect width="40" height="40" rx="11" fill="#6b6b6e"/><rect x="11" y="11" width="18" height="15" rx="4" fill="none" stroke="#ffffff" stroke-width="2.4"/><rect x="15" y="30" width="10" height="3" rx="1.5" fill="#cfcfcf"/></g>
+    <text x="120" y="150" font-size="10" fill="#3c4043" text-anchor="middle">分词</text>
+    <text x="212" y="150" font-size="10" fill="#3c4043" text-anchor="middle">保存</text>
+    <text x="304" y="150" font-size="10" fill="#3c4043" text-anchor="middle">分享</text>
+    <text x="396" y="150" font-size="10" fill="#3c4043" text-anchor="middle">翻译</text>
+    <text x="488" y="150" font-size="10" fill="#3c4043" text-anchor="middle">复制</text>
+
+    <!-- ===== app grid card (bottom) 4 cols x 5 rows ===== -->
+    <clipPath id="gridClip"><rect x="76" y="166" width="460" height="300" rx="20"/></clipPath>
+    <g clip-path="url(#gridClip)">
+      <circle cx="160" cy="250" r="100" fill="#8ab4f8" opacity="0.55"/>
+      <circle cx="470" cy="430" r="110" fill="#f6b26b" opacity="0.5"/>
+      <circle cx="300" cy="370" r="74" fill="#a8dab5" opacity="0.45"/>
+    </g>
+    <rect x="76" y="166" width="460" height="300" rx="20" fill="#DEE1E3" opacity="0.62"/>
+    <g>
+      <g transform="translate(100,186)"><rect width="40" height="40" rx="10" fill="#3c4043"/><circle cx="20" cy="20" r="9" fill="#9aa0a6"/></g>
+      <g transform="translate(228,186)"><rect width="40" height="40" rx="20" fill="#3478f6"/><circle cx="20" cy="20" r="8" fill="#ffffff"/></g>
+      <g transform="translate(356,186)"><rect width="40" height="40" rx="10" fill="#ffffff"/><path d="M9 25 L20 11 L31 25 Z" fill="#fbbc04"/><circle cx="20" cy="14" r="4.5" fill="#ea4335"/></g>
+      <g transform="translate(484,186)"><rect width="40" height="40" rx="20" fill="#ffffff"/><circle cx="20" cy="20" r="12" fill="#34a853"/><rect x="14" y="17" width="12" height="3" rx="1.5" fill="#ffffff"/><rect x="18.5" y="14" width="3" height="12" rx="1.5" fill="#ffffff"/></g>
+
+      <g transform="translate(100,234)"><rect width="40" height="40" rx="10" fill="#fbbc04"/><rect x="9" y="12" width="22" height="15" rx="3" fill="#ffffff"/></g>
+      <g transform="translate(228,234)"><rect width="40" height="40" rx="10" fill="#ffffff"/><rect x="10" y="13" width="20" height="15" rx="4" fill="#3c4043"/><circle cx="20" cy="20" r="4" fill="#8ab4f8"/></g>
+      <g transform="translate(356,234)"><rect width="40" height="40" rx="10" fill="#ffffff"/><path d="M12 11 h16 v18 h-16 z" fill="#ea4335"/><path d="M12 14 h16" stroke="#ffffff" stroke-width="2"/></g>
+      <g transform="translate(484,234)"><rect width="40" height="40" rx="20" fill="#ffffff"/><circle cx="20" cy="20" r="11" fill="none" stroke="#34a853" stroke-width="4" stroke-dasharray="5 4"/></g>
+
+      <g transform="translate(100,282)"><rect width="40" height="40" rx="20" fill="#ffffff"/><circle cx="20" cy="20" r="11" fill="#a142f4"/></g>
+      <g transform="translate(228,282)"><rect width="40" height="40" rx="10" fill="#d93025"/><path d="M13 20 l9-5 v10 z" fill="#ffffff"/></g>
+      <g transform="translate(356,282)"><rect width="40" height="40" rx="10" fill="#ffffff"/><rect x="11" y="11" width="18" height="18" rx="5" fill="#f5388c"/><circle cx="20" cy="20" r="4.5" fill="#ffffff"/></g>
+      <g transform="translate(484,282)"><rect width="40" height="40" rx="20" fill="#ffffff"/><circle cx="20" cy="20" r="11" fill="#12b5cb"/></g>
+
+      <g transform="translate(100,330)"><rect width="40" height="40" rx="20" fill="#ffffff"/><circle cx="20" cy="20" r="11" fill="#00897b"/></g>
+      <g transform="translate(228,330)"><rect width="40" height="40" rx="10" fill="#3949ab"/><path d="M13 20 l9-5 v10 z" fill="#ffffff"/></g>
+      <g transform="translate(356,330)"><rect width="40" height="40" rx="10" fill="#ffffff"/><rect x="11" y="13" width="18" height="13" rx="3" fill="#f4511e"/><rect x="14" y="27" width="12" height="4" rx="2" fill="#f4511e"/></g>
+      <g transform="translate(484,330)"><rect width="40" height="40" rx="10" fill="#6d4c41"/><circle cx="20" cy="20" r="9" fill="#ffffff"/></g>
+
+      <g transform="translate(100,378)"><rect width="40" height="40" rx="10" fill="#ffffff"/><circle cx="20" cy="20" r="11" fill="#7cb342"/></g>
+      <g transform="translate(228,378)"><rect width="40" height="40" rx="20" fill="#ffffff"/><circle cx="20" cy="20" r="11" fill="#1a73e8"/><path d="M14 20 h12 M20 14 v12" stroke="#ffffff" stroke-width="2.5"/></g>
+      <g transform="translate(356,378)"><rect width="40" height="40" rx="10" fill="#e8710a"/><circle cx="20" cy="20" r="9" fill="#ffffff"/><path d="M15 20 h10 M20 15 v10" stroke="#e8710a" stroke-width="2.5"/></g>
+      <g transform="translate(484,378)"><rect width="40" height="40" rx="20" fill="#ffffff"/><circle cx="20" cy="20" r="11" fill="#5f6368"/></g>
+    </g>
+    <path d="M 60 300 l -11 0 m 0 0 l 7 -6 m -7 6 l 7 6" stroke="#8a97b3" stroke-width="2.5" fill="none"/>
+    <path d="M 552 300 l 11 0 m -11 0 l -7 -6 m 7 6 l -7 6" stroke="#8a97b3" stroke-width="2.5" fill="none"/>
+    <circle cx="244" cy="448" r="3.2" fill="#3c4043"/>
+    <circle cx="259" cy="448" r="3.2" fill="#c7cdd9"/>
+    <circle cx="274" cy="448" r="3.2" fill="#c7cdd9"/>
+
+    <text x="40" y="498" font-size="12.5" font-weight="700" fill="#2b3a5b">设计说明</text>
+    <text x="40" y="518" font-size="12" fill="#6b7a99">· 上卡：磨砂玻璃，单行 5（分词/保存/分享/翻译/复制）　· 下卡：磨砂玻璃，4×5=20 个/页</text>
+    <text x="40" y="538" font-size="12" fill="#6b7a99">· 左右滑动翻页 + 页点；两卡上下拼接、居中留边；点功能→执行，点 App→跳转，点空白→消失</text>
+  </g>
+</svg>

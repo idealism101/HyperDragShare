@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 1040" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <rect width="680" height="1040" fill="#f4f6fb"/>
+  <text x="34" y="46" font-size="26" font-weight="700" fill="#1f2a44">按钮触发模式 · 修正后的交互流程</text>
+  <text x="34" y="74" font-size="14" fill="#5a6b8c">长按要求 → 小按钮 → 点按按钮 → 分享菜单（可点）。圆环样式不再介入。</text>
+
+  <!-- Step 1 -->
+  <g transform="translate(34,100)">
+    <rect width="612" height="210" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">① 长按选中（手势进行中）</text>
+    <text x="20" y="52" font-size="12.5" fill="#6b7a99">预览图（标准卡片，清晰可见）出现；同时弹出小按钮「分享」。</text>
+    <!-- phone-ish frame -->
+    <rect x="360" y="64" width="220" height="132" rx="14" fill="#0f1726"/>
+    <text x="378" y="96" font-size="12" fill="#cdd6ea">长按的文字内容…</text>
+    <text x="378" y="116" font-size="12" fill="#cdd6ea">选中后可分享的</text>
+    <text x="378" y="136" font-size="12" fill="#cdd6ea">一段示例文本。</text>
+    <!-- preview card -->
+    <rect x="378" y="150" width="150" height="34" rx="8" fill="#1b2942" stroke="#3a4a6b"/>
+    <text x="392" y="172" font-size="11.5" fill="#dfe6f5">预览卡片（文字/图片）</text>
+    <!-- trigger button oval -->
+    <circle cx="540" cy="92" r="20" fill="#3F7FFF"/>
+    <text x="540" y="97" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">分享</text>
+    <text x="20" y="190" font-size="12" fill="#2e7d57">✓ 预览可见　✓ 按钮为实心蓝圆，非半透明圆环</text>
+  </g>
+
+  <!-- Step 2 -->
+  <g transform="translate(34,330)">
+    <rect width="612" height="150" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">② 抬手（手势结束）</text>
+    <text x="20" y="52" font-size="12.5" fill="#6b7a99">按钮切换为可点状态（FLAG_NOT_TOUCH_MODAL + WATCH_OUTSIDE_TOUCH），预览保留。</text>
+    <rect x="360" y="64" width="220" height="70" rx="14" fill="#0f1726"/>
+    <circle cx="540" cy="100" r="20" fill="#3F7FFF" stroke="#bcd0ff" stroke-width="3"/>
+    <text x="540" y="105" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">分享</text>
+    <text x="20" y="120" font-size="12" fill="#2e7d57">✓ 此时点按钮才会展开菜单（手势窗口已释放，按钮可接收触摸）</text>
+  </g>
+
+  <!-- Step 3 -->
+  <g transform="translate(34,500)">
+    <rect width="612" height="240" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">③ 点按「分享」按钮</text>
+    <text x="20" y="52" font-size="12.5" fill="#6b7a99">按钮立即消失；线性分享菜单出现，可点选目标（菜单可触摸）。</text>
+    <rect x="40" y="70" width="540" height="120" rx="14" fill="#0f1726"/>
+    <!-- menu strip -->
+    <g>
+      <rect x="64" y="96" width="64" height="68" rx="12" fill="#1b2942" stroke="#3a4a6b"/>
+      <circle cx="96" cy="124" r="16" fill="#5b6b8c"/>
+      <text x="96" y="156" font-size="10" fill="#cdd6ea" text-anchor="middle">微信</text>
+      <rect x="148" y="96" width="64" height="68" rx="12" fill="#1b2942" stroke="#3a4a6b"/>
+      <circle cx="180" cy="124" r="16" fill="#5b6b8c"/>
+      <text x="180" y="156" font-size="10" fill="#cdd6ea" text-anchor="middle">QQ</text>
+      <rect x="232" y="96" width="64" height="68" rx="12" fill="#1b2942" stroke="#3a4a6b"/>
+      <circle cx="264" cy="124" r="16" fill="#5b6b8c"/>
+      <text x="264" y="156" font-size="10" fill="#cdd6ea" text-anchor="middle">浏览器</text>
+      <rect x="316" y="96" width="64" height="68" rx="12" fill="#1b2942" stroke="#3a4a6b"/>
+      <circle cx="348" cy="124" r="16" fill="#5b6b8c"/>
+      <text x="348" y="156" font-size="10" fill="#cdd6ea" text-anchor="middle">复制</text>
+      <rect x="400" y="96" width="64" height="68" rx="12" fill="#2a4a8c" stroke="#6ea0ff"/>
+      <circle cx="432" cy="124" r="16" fill="#6ea0ff"/>
+      <text x="432" y="156" font-size="10" fill="#eaf1ff" text-anchor="middle">更多</text>
+      <rect x="484" y="96" width="64" height="68" rx="12" fill="#1b2942" stroke="#3a4a6b"/>
+      <circle cx="516" cy="124" r="16" fill="#5b6b8c"/>
+      <text x="516" y="156" font-size="10" fill="#cdd6ea" text-anchor="middle">保存</text>
+    </g>
+    <text x="20" y="210" font-size="12" fill="#2e7d57">✓ 按钮已消失　✓ 菜单可触摸　✓ 点条目即分享</text>
+  </g>
+
+  <!-- Step 4 -->
+  <g transform="translate(34,760)">
+    <rect width="612" height="220" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">④ 收尾：点目标 or 点空白</text>
+    <text x="20" y="54" font-size="12.5" fill="#6b7a99">· 点菜单内某条目 → 直接拉起分享（launchShare）。</text>
+    <text x="20" y="78" font-size="12.5" fill="#6b7a99">· 点屏幕其他区域 → ACTION_OUTSIDE → 预览+菜单一起消失。</text>
+    <rect x="40" y="96" width="540" height="100" rx="14" fill="#0f1726"/>
+    <text x="310" y="150" font-size="13" fill="#9fb0d0" text-anchor="middle">（点菜单外任意处 → 全部关闭）</text>
+    <text x="20" y="200" font-size="12" fill="#2e7d57">✓ 两种退出路径都能正确关闭预览与菜单</text>
+  </g>
+</svg>

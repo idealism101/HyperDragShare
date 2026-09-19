@@ -3,10 +3,12 @@ package com.leaf.hyperdragshare.codex
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.os.SystemClock
 import android.view.ViewConfiguration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -18,6 +20,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,9 +46,48 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.layout.ContentScale
+import android.content.ClipboardManager
+import android.content.ClipData
+import android.app.WallpaperManager
+import kotlin.math.max
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.foundation.border
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.onSizeChanged
+import kotlin.math.abs
+import kotlin.math.floor
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -69,6 +111,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.state.ToggleableState
@@ -126,6 +169,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.zhanghai.android.appiconloader.AppIconLoader
@@ -133,13 +177,41 @@ import java.util.LinkedHashSet
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private const val ORDER_LIST_INDEX_OFFSET = 1
+/** 菜单排序页：图标模式每页 4 列 × 5 行。 */
+private const val ORDER_ICON_COLUMNS = 4
+private const val ORDER_ICON_ROWS = 5
+
+/** 菜单排序页：长条模式每页 1 列 × 5 行。 */
+private const val ORDER_BAR_COLUMNS = 1
+private const val ORDER_BAR_ROWS = 5
+
+/** 拖动换位后冷却（ms），避免相邻格子抖动。 */
+private const val DRAG_SWAP_COOLDOWN_MS = 60L
+
+/** 拖动换位滞回：需接近目标格中心到一定程度才换位。 */
+private const val ORDER_DRAG_HYSTERESIS = 0.3f
+
+/** 「已移除」区最高显示高度（dp）：超过就纵向滚动。 */
+private const val ORDER_REMOVED_AREA_MAX_DP = 190
+
+/** 长按松手后的误触保护窗口（ms）。 */
+private const val ORDER_TAP_GUARD_MS = 350L
+
+/** 菜单排序页：图标模式单格高度（dp）——图标 34 + 名称两行 + 内边距。 */
+private const val ORDER_CELL_HEIGHT_ICON_DP = 76
+
+/** 菜单排序页：长条模式单行高度（dp）。 */
+private const val ORDER_CELL_HEIGHT_BAR_DP = 54
+
+
 
 private sealed interface SettingsRoute : NavKey {
     data object Main : SettingsRoute
     data object Visibility : SettingsRoute
     data object Order : SettingsRoute
+    data object OrderAdd : SettingsRoute
     data object Blacklist : SettingsRoute
+    data object TranslateApp : SettingsRoute
     data object Licenses : SettingsRoute
 }
 
@@ -193,6 +265,7 @@ internal fun DragShareSettingsApp(context: Context) {
                     onOpenVisibility = { backStack.add(SettingsRoute.Visibility) },
                     onOpenOrder = { backStack.add(SettingsRoute.Order) },
                     onOpenBlacklist = { backStack.add(SettingsRoute.Blacklist) },
+                    onOpenTranslateApp = { backStack.add(SettingsRoute.TranslateApp) },
                     onOpenLicenses = { backStack.add(SettingsRoute.Licenses) },
                     persist = currentPersist.value,
                 )
@@ -210,11 +283,28 @@ internal fun DragShareSettingsApp(context: Context) {
                     context = context,
                     settings = currentSettings.value,
                     onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
+                    onAddTargets = { backStack.add(SettingsRoute.OrderAdd) },
+                    persist = currentPersist.value,
+                )
+            }
+            entry(SettingsRoute.OrderAdd) {
+                OrderAddPage(
+                    context = context,
+                    settings = currentSettings.value,
+                    onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
                     persist = currentPersist.value,
                 )
             }
             entry(SettingsRoute.Blacklist) {
                 AccessibilityBlacklistPage(
+                    context = context,
+                    settings = currentSettings.value,
+                    onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
+                    persist = currentPersist.value,
+                )
+            }
+            entry(SettingsRoute.TranslateApp) {
+                TranslateAppPage(
                     context = context,
                     settings = currentSettings.value,
                     onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
@@ -284,6 +374,7 @@ private fun MainShell(
     onOpenVisibility: () -> Unit,
     onOpenOrder: () -> Unit,
     onOpenBlacklist: () -> Unit,
+    onOpenTranslateApp: () -> Unit,
     onOpenLicenses: () -> Unit,
     persist: (DragShareSettings) -> Unit,
 ) {
@@ -347,6 +438,7 @@ private fun MainShell(
                         onOpenVisibility = onOpenVisibility,
                         onOpenOrder = onOpenOrder,
                         onOpenBlacklist = onOpenBlacklist,
+                        onOpenTranslateApp = onOpenTranslateApp,
                         persist = persist,
                     )
 
@@ -443,6 +535,7 @@ private fun SettingsPage(
     onOpenVisibility: () -> Unit,
     onOpenOrder: () -> Unit,
     onOpenBlacklist: () -> Unit,
+    onOpenTranslateApp: () -> Unit,
     persist: (DragShareSettings) -> Unit,
 ) {
     var showAccessibilityDialog by remember { mutableStateOf(false) }
@@ -467,30 +560,6 @@ private fun SettingsPage(
                 ).show()
             }
         }
-    }
-    var edgeTriggerDp by remember(settings.edgeTriggerDp) {
-        mutableFloatStateOf(settings.edgeTriggerDp.toFloat())
-    }
-    var scrollSpeed by remember(settings.scrollSpeedDpPerSecond) {
-        mutableFloatStateOf(settings.scrollSpeedDpPerSecond.toFloat())
-    }
-    var simpleOpacity by remember(settings.simpleMenuOpacityPercent) {
-        mutableFloatStateOf(settings.simpleMenuOpacityPercent.toFloat())
-    }
-    var simpleCornerRadius by remember(settings.simpleMenuCornerRadiusDp) {
-        mutableFloatStateOf(settings.simpleMenuCornerRadiusDp.toFloat())
-    }
-    var simpleEdgeDistance by remember(settings.simpleMenuEdgeDistanceDp) {
-        mutableFloatStateOf(settings.simpleMenuEdgeDistanceDp.toFloat())
-    }
-    var iconOpacity by remember(settings.iconOpacityPercent) {
-        mutableFloatStateOf(settings.iconOpacityPercent.toFloat())
-    }
-    var modernBlurRadius by remember(settings.modernBlurRadiusDp) {
-        mutableFloatStateOf(settings.modernBlurRadiusDp.toFloat())
-    }
-    var modernGlassOpacity by remember(settings.modernGlassOpacityPercent) {
-        mutableFloatStateOf(settings.modernGlassOpacityPercent.toFloat())
     }
     var accessibilityLongPressTimeout by remember(settings.accessibilityLongPressTimeoutMillis) {
         mutableFloatStateOf(
@@ -693,7 +762,7 @@ private fun SettingsPage(
             }
 
             item(key = "appearance-title") {
-                SmallTitle(text = "拖拽菜单")
+                SmallTitle(text = "磨砂菜单")
             }
             item(key = "appearance-preferences") {
                 Card(modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
@@ -714,176 +783,18 @@ private fun SettingsPage(
                             )
                         },
                     )
-                    OverlayDropdownPreference(
-                        title = "拖拽样式",
-                        summary = "仅影响拖拽时的悬浮菜单",
-                        items = listOf("简洁", "流光", "环形", "现代"),
-                        selectedIndex = settings.uiStyle.coerceIn(0, 3),
-                        onSelectedIndexChange = { selected ->
-                            persist(copySettings(settings, uiStyle = selected.coerceIn(0, 3)))
-                        },
+                    ArrowPreference(
+                        title = "翻译应用",
+                        summary = settings.translateAppPackage
+                            .takeIf { it.isNotBlank() }
+                            ?.let { "已选择：${appLabel(context, it)}；点翻译会先复制文字再打开它" }
+                            ?: "不选则保持现状：复制文字并提示",
+                        onClick = onOpenTranslateApp,
                     )
                 }
             }
 
-            if (settings.uiStyle == DragShareSettings.STYLE_SIMPLE
-                || settings.uiStyle == DragShareSettings.STYLE_MODERN
-            ) {
-                item(key = "simple-appearance-title") {
-                    SmallTitle(
-                        text = if (settings.uiStyle == DragShareSettings.STYLE_MODERN) {
-                            "现代样式"
-                        } else {
-                            "简洁样式"
-                        },
-                    )
-                }
-                item(key = "simple-appearance-preferences") {
-                    Card(modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                        OverlayDropdownPreference(
-                            title = "菜单位置",
-                            summary = "选择分享菜单出现的屏幕边缘",
-                            items = listOf("上", "下", "左", "右", "近手方向"),
-                            selectedIndex = settings.simpleMenuPosition.coerceIn(0, 4),
-                            onSelectedIndexChange = { selected ->
-                                persist(
-                                    copySettings(
-                                        settings,
-                                        simpleMenuPosition = selected.coerceIn(0, 4),
-                                    ),
-                                )
-                            },
-                        )
-                        if (settings.uiStyle == DragShareSettings.STYLE_SIMPLE) {
-                            SliderPreference(
-                                title = "背景不透明度",
-                                value = simpleOpacity,
-                                valueText = "${simpleOpacity.roundToInt()}%",
-                                valueRange = DragShareSettings.MIN_SIMPLE_MENU_OPACITY_PERCENT.toFloat()
-                                    ..DragShareSettings.MAX_SIMPLE_MENU_OPACITY_PERCENT.toFloat(),
-                                steps = 15,
-                                showKeyPoints = true,
-                                keyPoints = listOf(20f, 40f, 60f, 80f, 100f),
-                                onValueChange = { simpleOpacity = it },
-                                onValueChangeFinished = {
-                                    persist(
-                                        copySettings(
-                                            settings,
-                                            simpleMenuOpacityPercent = simpleOpacity.roundToInt(),
-                                        ),
-                                    )
-                                },
-                            )
-                            SliderPreference(
-                                title = "背景圆角",
-                                value = simpleCornerRadius,
-                                valueText = "${simpleCornerRadius.roundToInt()} dp",
-                                valueRange = DragShareSettings.MIN_SIMPLE_MENU_CORNER_RADIUS_DP.toFloat()
-                                    ..DragShareSettings.MAX_SIMPLE_MENU_CORNER_RADIUS_DP.toFloat(),
-                                steps = 16,
-                                showKeyPoints = true,
-                                keyPoints = listOf(0f, 8f, 16f, 24f, 32f),
-                                onValueChange = { simpleCornerRadius = it },
-                                onValueChangeFinished = {
-                                    persist(
-                                        copySettings(
-                                            settings,
-                                            simpleMenuCornerRadiusDp = simpleCornerRadius.roundToInt(),
-                                        ),
-                                    )
-                                },
-                            )
-                            SliderPreference(
-                                title = "菜单到边缘距离",
-                                value = simpleEdgeDistance,
-                                valueText = "${simpleEdgeDistance.roundToInt()} dp",
-                                valueRange = DragShareSettings.MIN_SIMPLE_MENU_EDGE_DISTANCE_DP.toFloat()
-                                    ..DragShareSettings.MAX_SIMPLE_MENU_EDGE_DISTANCE_DP.toFloat(),
-                                steps = 16,
-                                showKeyPoints = true,
-                                keyPoints = listOf(0f, 8f, 16f, 32f, 64f),
-                                onValueChange = { simpleEdgeDistance = it },
-                                onValueChangeFinished = {
-                                    persist(
-                                        copySettings(
-                                            settings,
-                                            simpleMenuEdgeDistanceDp = simpleEdgeDistance.roundToInt(),
-                                        ),
-                                    )
-                                },
-                            )
-                        } else {
-                            SliderPreference(
-                                title = "模糊半径",
-                                summary = "HyperOS 局部背景模糊强度",
-                                value = modernBlurRadius,
-                                valueText = "${modernBlurRadius.roundToInt()} dp",
-                                valueRange = DragShareSettings.MIN_MODERN_BLUR_RADIUS_DP.toFloat()
-                                    ..DragShareSettings.MAX_MODERN_BLUR_RADIUS_DP.toFloat(),
-                                steps = 30,
-                                showKeyPoints = true,
-                                keyPoints = listOf(0f, 20f, 40f, 60f, 100f, 150f),
-                                onValueChange = { modernBlurRadius = it },
-                                onValueChangeFinished = {
-                                    persist(
-                                        copySettings(
-                                            settings,
-                                            modernBlurRadiusDp = modernBlurRadius.roundToInt(),
-                                        ),
-                                    )
-                                },
-                            )
-                            SliderPreference(
-                                title = "模糊不透明度",
-                                value = modernGlassOpacity,
-                                valueText = "${modernGlassOpacity.roundToInt()}%",
-                                valueRange = DragShareSettings.MIN_MODERN_GLASS_OPACITY_PERCENT.toFloat()
-                                    ..DragShareSettings.MAX_MODERN_GLASS_OPACITY_PERCENT.toFloat(),
-                                steps = 18,
-                                showKeyPoints = true,
-                                keyPoints = listOf(0f, 25f, 50f, 75f, 90f),
-                                onValueChange = { modernGlassOpacity = it },
-                                onValueChangeFinished = {
-                                    persist(
-                                        copySettings(
-                                            settings,
-                                            modernGlassOpacityPercent = modernGlassOpacity.roundToInt(),
-                                        ),
-                                    )
-                                },
-                            )
-                        }
-                    }
-                }
-            }
 
-            item(key = "common-appearance-title") {
-                SmallTitle(text = "公共外观")
-            }
-            item(key = "common-appearance-preferences") {
-                Card(modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    SliderPreference(
-                        title = "图标不透明度",
-                        summary = "同时影响应用图标和名称",
-                        value = iconOpacity,
-                        valueText = "${iconOpacity.roundToInt()}%",
-                        valueRange = DragShareSettings.MIN_ICON_OPACITY_PERCENT.toFloat()
-                            ..DragShareSettings.MAX_ICON_OPACITY_PERCENT.toFloat(),
-                        steps = 20,
-                        showKeyPoints = true,
-                        keyPoints = listOf(0f, 25f, 50f, 75f, 100f),
-                        onValueChange = { iconOpacity = it },
-                        onValueChangeFinished = {
-                            persist(
-                                copySettings(
-                                    settings,
-                                    iconOpacityPercent = iconOpacity.roundToInt(),
-                                ),
-                            )
-                        },
-                    )
-                }
-            }
 
             item(key = "menu-title") {
                 SmallTitle(text = "菜单管理")
@@ -903,77 +814,6 @@ private fun SettingsPage(
                 }
             }
 
-            item(key = "touch-title") {
-                SmallTitle(text = "触摸行为")
-            }
-            item(key = "touch-preferences") {
-                Card(modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    SwitchPreference(
-                        title = "阻止背景滑动",
-                        summary = "HyperDragShare 开始后尝试取消原页面触摸",
-                        checked = settings.blockBackgroundScroll,
-                        onCheckedChange = { checked ->
-                            persist(copySettings(settings, blockBackgroundScroll = checked))
-                        },
-                    )
-                    SwitchPreference(
-                        title = "手指移开时关闭分享菜单",
-                        summary = "适用于简洁、流光和环形样式，可重新移入触发",
-                        checked = settings.closeMenuWhenPointerLeaves,
-                        onCheckedChange = { checked ->
-                            persist(
-                                copySettings(
-                                    settings,
-                                    closeMenuWhenPointerLeaves = checked,
-                                ),
-                            )
-                        },
-                    )
-                }
-            }
-
-            item(key = "threshold-title") {
-                SmallTitle(text = "滚动参数")
-            }
-            item(key = "threshold-preferences") {
-                Card(modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    SliderPreference(
-                        title = "边缘触发距离",
-                        summary = "手指靠近屏幕左右边缘时开始滚动",
-                        value = edgeTriggerDp,
-                        valueText = "${edgeTriggerDp.roundToInt()} dp",
-                        valueRange = DragShareSettings.MIN_EDGE_TRIGGER_DP.toFloat()
-                            ..DragShareSettings.MAX_EDGE_TRIGGER_DP.toFloat(),
-                        steps = 21,
-                        showKeyPoints = true,
-                        keyPoints = listOf(24f, 56f, 100f, 150f, 200f),
-                        onValueChange = { edgeTriggerDp = it },
-                        onValueChangeFinished = {
-                            persist(copySettings(settings, edgeTriggerDp = edgeTriggerDp.roundToInt()))
-                        },
-                    )
-                    SliderPreference(
-                        title = "滚动速度",
-                        summary = "设置分享菜单横向滚动速度",
-                        value = scrollSpeed,
-                        valueText = "${scrollSpeed.roundToInt()} dp/s",
-                        valueRange = DragShareSettings.MIN_SCROLL_SPEED_DP_PER_SECOND.toFloat()
-                            ..DragShareSettings.MAX_SCROLL_SPEED_DP_PER_SECOND.toFloat(),
-                        steps = 26,
-                        showKeyPoints = true,
-                        keyPoints = listOf(120f, 320f, 560f, 800f, 1200f),
-                        onValueChange = { scrollSpeed = it },
-                        onValueChangeFinished = {
-                            persist(
-                                copySettings(
-                                    settings,
-                                    scrollSpeedDp = scrollSpeed.roundToInt(),
-                                ),
-                            )
-                        },
-                    )
-                }
-            }
 
             item(key = "logging-title") {
                 SmallTitle(text = "日志")
@@ -1712,45 +1552,195 @@ private fun OrderPage(
     context: Context,
     settings: DragShareSettings,
     onBack: () -> Unit,
+    onAddTargets: () -> Unit,
     persist: (DragShareSettings) -> Unit,
 ) {
-    val items = remember { mutableStateListOf<ShareTarget>() }
+    val visible = remember { mutableStateListOf<ShareTarget>() }
+    val removed = remember { mutableStateListOf<ShareTarget>() }
     var loading by remember { mutableStateOf(true) }
     var iconBitmaps by remember { mutableStateOf<Map<String, Bitmap>>(emptyMap()) }
-    val listState = rememberLazyListState()
+    var editMode by rememberSaveable { mutableStateOf(false) }
+    var barMode by rememberSaveable { mutableStateOf(false) }
+    var plateMode by rememberSaveable { mutableStateOf(false) }
+
+    val columns = if (barMode) ORDER_BAR_COLUMNS else ORDER_ICON_COLUMNS
+    val rows = if (barMode) ORDER_BAR_ROWS else ORDER_ICON_ROWS
+    val perPage = (columns * rows).coerceAtLeast(1)
+    val pageCount = ((visible.size + perPage - 1) / perPage).coerceAtLeast(1)
+    val pagerState = rememberPagerState(pageCount = { pageCount })
+    val scope = rememberCoroutineScope()
+    val scrollBehavior = MiuixScrollBehavior()
+    val cellHeightDp = if (barMode) ORDER_CELL_HEIGHT_BAR_DP else ORDER_CELL_HEIGHT_ICON_DP
+    val pagerHeightDp = cellHeightDp * rows
+
+    var cellSize by remember { mutableStateOf(Size.Zero) }
+    var draggingIndex by remember { mutableStateOf(-1) }
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    var lastSwapUptime by remember { mutableStateOf(0L) }
+    val dragTracker = remember { DragTracker() }
     val currentSettings = rememberUpdatedState(settings)
     val currentPersist = rememberUpdatedState(persist)
-    val dragDropState = rememberDragDropState(
-        lazyListState = listState,
-        onMove = { fromIndex, toIndex ->
-            val from = fromIndex - ORDER_LIST_INDEX_OFFSET
-            val to = (toIndex - ORDER_LIST_INDEX_OFFSET).coerceAtLeast(0)
-            if (from in items.indices && to in items.indices && from != to) {
-                items.add(to, items.removeAt(from))
-            }
-        },
-        onDragFinished = {
-            currentPersist.value(
-                copySettings(
-                    currentSettings.value,
-                    targetOrder = items.mapNotNull { it.key() },
-                ),
-            )
-        },
-    )
-    val scrollBehavior = MiuixScrollBehavior()
+
+    var bottomDragTarget by remember { mutableStateOf<ShareTarget?>(null) }
+    var hoverSlot by remember { mutableStateOf(-1) }
+    var ghostOffset by remember { mutableStateOf(Offset.Zero) }
+    var lastBottomDragEndUptime by remember { mutableStateOf(0L) }
+
+    val plateAlpha = (255 * settings.frostedPlateAlphaPercent / 100).coerceIn(0, 255)
+    val plateShade = (255 * (100 - settings.frostedDarknessPercent) / 100).coerceIn(0, 255)
+    val plateColor = Color(plateShade, plateShade, plateShade, plateAlpha)
+    val platePerceived = plateShade * (plateAlpha / 255f) + 255f * (1f - plateAlpha / 255f)
+    val plateLight = platePerceived >= 150f
+    val plateStrong = if (plateLight) Color(0xFF1F1F1F) else Color(0xFFF1EFE8)
+    val plateWeak = if (plateLight) Color(0xFF444441) else Color(0xFFB4B2A9)
+    val plateDivider = if (plateLight) Color(0x24000000) else Color(0x29FFFFFF)
+    val dotIdle = if (plateLight) Color(0x47000000) else Color(0x52FFFFFF)
+    val dotActive = if (plateLight) Color(0xFF1F1F1F) else Color(0xFFF1EFE8)
+    val badgeRing = if (plateLight) Color(0xD9FFFFFF) else Color(0x8C000000)
+
+    fun persistOrder() {
+        val order = visible.mapNotNull { it.key() } + removed.mapNotNull { it.key() }
+        currentPersist.value(copySettings(currentSettings.value, targetOrder = order))
+    }
+
+    fun setHidden(key: String, hidden: Boolean) {
+        val next = LinkedHashSet(currentSettings.value.hiddenTargetKeys)
+        if (hidden) {
+            next.add(key)
+        } else {
+            next.remove(key)
+        }
+        currentPersist.value(copySettings(currentSettings.value, hiddenTargetKeys = next))
+    }
+
+    fun removeAt(index: Int) {
+        val target = visible.getOrNull(index) ?: return
+        val key = target.key() ?: return
+        visible.removeAt(index)
+        if (removed.none { it.key() == key }) {
+            removed.add(target)
+        }
+        setHidden(key, true)
+        persistOrder()
+    }
+
+    fun addBack(target: ShareTarget, index: Int = -1) {
+        val key = target.key() ?: return
+        removed.remove(target)
+        val at = if (index in 0..visible.size) index else visible.size
+        visible.add(at, target)
+        setHidden(key, false)
+        persistOrder()
+    }
+
+    fun copyPackageName(target: ShareTarget) {
+        val text = target.packageName()
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText("package", text))
+        Toast.makeText(context, "已复制包名 " + text, Toast.LENGTH_SHORT).show()
+    }
+
+    fun indexAt(position: Offset): Int {
+        if (cellSize.width <= 0f || cellSize.height <= 0f) {
+            return -1
+        }
+        val column = floor(position.x / cellSize.width).toInt().coerceIn(0, columns - 1)
+        val row = floor(position.y / cellSize.height).toInt().coerceIn(0, rows - 1)
+        return pagerState.currentPage * perPage + row * columns + column
+    }
+
+    fun cellCenter(index: Int): Offset {
+        val inPage = ((index % perPage) + perPage) % perPage
+        val column = inPage % columns
+        val row = inPage / columns
+        return Offset(
+            (column + 0.5f) * cellSize.width,
+            (row + 0.5f) * cellSize.height,
+        )
+    }
+
+    fun isDeepInside(point: Offset, index: Int): Boolean {
+        val center = cellCenter(index)
+        val insetX = cellSize.width * ORDER_DRAG_HYSTERESIS / 2f
+        val insetY = cellSize.height * ORDER_DRAG_HYSTERESIS / 2f
+        return abs(point.x - center.x) <= cellSize.width / 2f - insetX &&
+            abs(point.y - center.y) <= cellSize.height / 2f - insetY
+    }
+
+    fun syncDragOffset() {
+        val index = draggingIndex
+        if (index < 0 || cellSize.width <= 0f) {
+            return
+        }
+        dragOffset = (dragTracker.finger + dragTracker.grabDelta) - cellCenter(index)
+    }
+
+    fun trySwap() {
+        val from = draggingIndex
+        if (from < 0 || cellSize.width <= 0f) {
+            return
+        }
+        val now = SystemClock.uptimeMillis()
+        if (now - lastSwapUptime < DRAG_SWAP_COOLDOWN_MS) {
+            return
+        }
+        val visualCenter = dragTracker.finger + dragTracker.grabDelta
+        val target = indexAt(visualCenter)
+        if (target < 0 || target == from || target !in visible.indices) {
+            return
+        }
+        if (!isDeepInside(visualCenter, target)) {
+            return
+        }
+        visible.add(target, visible.removeAt(from))
+        draggingIndex = target
+        lastSwapUptime = now
+        syncDragOffset()
+    }
+
+    fun updateBottomDrag(fingerLocal: Offset) {
+        if (bottomDragTarget == null || cellSize.width <= 0f) {
+            return
+        }
+        val fingerInGrid = dragTracker.chipTopLeft + fingerLocal - dragTracker.gridTopLeft
+        val gridWidth = cellSize.width * columns
+        val gridHeight = cellSize.height * rows
+        val inside = fingerInGrid.x >= 0f && fingerInGrid.x <= gridWidth &&
+            fingerInGrid.y >= 0f && fingerInGrid.y <= gridHeight
+        val raw = if (inside) indexAt(fingerInGrid) else -1
+        val pageStart = pagerState.currentPage * perPage
+        hoverSlot = if (raw in pageStart until pageStart + perPage) raw - pageStart else -1
+        ghostOffset = fingerInGrid - Offset(22f, 22f)
+    }
+
+    fun finishBottomDrag() {
+        val target = bottomDragTarget
+        if (target != null && hoverSlot >= 0) {
+            addBack(target, pagerState.currentPage * perPage + hoverSlot)
+        }
+        bottomDragTarget = null
+        hoverSlot = -1
+        ghostOffset = Offset.Zero
+        lastBottomDragEndUptime = SystemClock.uptimeMillis()
+    }
 
     LaunchedEffect(context, settings.hiddenTargetKeys) {
         loading = true
         val loadedSettings = settings
-        val (queried, loadedIcons) = withContext(Dispatchers.IO) {
-            val targets = querySettingsTargets(context)
-                .filterNot { it.isBuiltIn() }
-                .filter { loadedSettings.isTargetVisible(it.key()) }
+        val (all, loadedIcons) = withContext(Dispatchers.IO) {
+            val targets = querySettingsTargets(context).filterNot { it.isBuiltIn() }
             targets to loadSettingsIcons(context, targets)
         }
-        items.clear()
-        items.addAll(ShareTargetRepository.orderForSettings(queried, loadedSettings))
+        val ordered = ShareTargetRepository.orderForSettings(all, loadedSettings)
+        visible.clear()
+        removed.clear()
+        ordered.forEach { target ->
+            if (loadedSettings.isTargetVisible(target.key())) {
+                visible.add(target)
+            } else {
+                removed.add(target)
+            }
+        }
         iconBitmaps = loadedIcons
         loading = false
     }
@@ -1762,67 +1752,773 @@ private fun OrderPage(
                 largeTitle = "菜单排序",
                 scrollBehavior = scrollBehavior,
                 navigationIcon = { BackNavigationIcon(onClick = onBack) },
+                actions = {
+                    TextButton(
+                        text = if (plateMode) "收起" else "背板",
+                        onClick = { plateMode = !plateMode },
+                    )
+                    TextButton(
+                        text = if (barMode) "图标" else "长条",
+                        onClick = { barMode = !barMode },
+                    )
+                    TextButton(
+                        text = if (editMode) "完成" else "编辑",
+                        onClick = {
+                            editMode = !editMode
+                            draggingIndex = -1
+                            dragOffset = Offset.Zero
+                        },
+                    )
+                },
             )
         },
     ) { paddingValues ->
         if (loading) {
             LoadingContent(paddingValues)
         } else {
-            LazyColumn(
-                state = listState,
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .dragContainer(dragDropState),
+                    .padding(paddingValues),
+            ) {
+                SmallTitle(
+                    text = when {
+                        plateMode -> "调整背板：透明度 / 磨砂 / 暗黑（菜单同步生效）"
+                        editMode -> "点 − 移除 · 长按拖动排序 · 长按下方图标可拖回"
+                        visible.isEmpty() -> "菜单里还没有应用"
+                        else -> "共 ${visible.size} 个应用 · 左右滑动翻页"
+                    },
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .onGloballyPositioned { dragTracker.gridTopLeft = it.positionInRoot() },
+                ) {
+                    WallpaperBackdrop(modifier = Modifier.matchParentSize())
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(plateColor, RoundedCornerShape(14.dp))
+                                .padding(4.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(pagerHeightDp.dp)
+                                    .onGloballyPositioned { coordinates ->
+                                        dragTracker.gridTopLeft = coordinates.positionInRoot()
+                                    }
+                                    .onSizeChanged { size ->
+                                        cellSize = Size(
+                                            size.width / columns.toFloat(),
+                                            size.height / rows.toFloat(),
+                                        )
+                                    }
+                                    .pointerInput(editMode, barMode, perPage, visible.size) {
+                                        if (!editMode || plateMode) {
+                                            return@pointerInput
+                                        }
+                                        detectDragGesturesAfterLongPress(
+                                            onDragStart = { position ->
+                                                val index = indexAt(position)
+                                                if (index in visible.indices) {
+                                                    draggingIndex = index
+                                                    dragTracker.finger = position
+                                                    dragTracker.grabDelta = cellCenter(index) - position
+                                                    lastSwapUptime = 0L
+                                                    syncDragOffset()
+                                                }
+                                            },
+                                            onDrag = { change, _ ->
+                                                change.consume()
+                                                if (draggingIndex >= 0) {
+                                                    dragTracker.finger = change.position
+                                                    syncDragOffset()
+                                                    trySwap()
+                                                }
+                                            },
+                                            onDragEnd = {
+                                                if (draggingIndex >= 0) {
+                                                    persistOrder()
+                                                }
+                                                draggingIndex = -1
+                                                dragOffset = Offset.Zero
+                                            },
+                                            onDragCancel = {
+                                                draggingIndex = -1
+                                                dragOffset = Offset.Zero
+                                            },
+                                        )
+                                    },
+                            ) {
+                                HorizontalPager(
+                                    state = pagerState,
+                                    userScrollEnabled = draggingIndex < 0 && bottomDragTarget == null,
+                                    pageSpacing = 0.dp,
+                                    modifier = Modifier.fillMaxSize(),
+                                ) { page ->
+                                    val pageStart = page * perPage
+                                    val splicing = bottomDragTarget != null &&
+                                        hoverSlot >= 0 && page == pagerState.currentPage
+                                    val slots: List<ShareTarget?> = List(perPage) { slot ->
+                                        when {
+                                            splicing && slot == hoverSlot -> null
+                                            splicing && slot > hoverSlot ->
+                                                visible.getOrNull(pageStart + slot - 1)
+                                            else -> visible.getOrNull(pageStart + slot)
+                                        }
+                                    }
+                                    Column(modifier = Modifier.fillMaxSize()) {
+                                        for (row in 0 until rows) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(cellHeightDp.dp),
+                                            ) {
+                                                for (column in 0 until columns) {
+                                                    val slot = row * columns + column
+                                                    val index = pageStart + slot
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .fillMaxHeight(),
+                                                    ) {
+                                                        val target = slots.getOrNull(slot)
+                                                        if (target != null) {
+                                                            OrderCell(
+                                                                target = target,
+                                                                normalizedBitmap = iconBitmaps[
+                                                                    target.packageName(),
+                                                                ],
+                                                                barMode = barMode,
+                                                                editMode = editMode,
+                                                                dragging = index == draggingIndex,
+                                                                dragOffsetProvider = { dragOffset },
+                                                                badgeRing = badgeRing,
+                                                                onRemove = { removeAt(index) },
+                                                                onCopy = { copyPackageName(target) },
+                                                            )
+                                                        } else if (splicing && slot == hoverSlot) {
+                                                            OrderPlaceholderCell(barMode = barMode)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (bottomDragTarget != null) {
+                                    val dragged = bottomDragTarget!!
+                                    Box(
+                                        modifier = Modifier
+                                            .offset {
+                                                IntOffset(
+                                                    ghostOffset.x.roundToInt(),
+                                                    ghostOffset.y.roundToInt(),
+                                                )
+                                            }
+                                            .zIndex(3f),
+                                    ) {
+                                        TargetIcon(
+                                            target = dragged,
+                                            size = 40.dp,
+                                            normalizedBitmap = iconBitmaps[dragged.packageName()],
+                                        )
+                                    }
+                                }
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 2.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TextButton(
+                                    text = "‹",
+                                    onClick = {
+                                        val previous = pagerState.currentPage - 1
+                                        if (previous >= 0) {
+                                            scope.launch { pagerState.animateScrollToPage(previous) }
+                                        }
+                                    },
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                for (page in 0 until pageCount) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(horizontal = 3.dp)
+                                            .size(if (page == pagerState.currentPage) 7.dp else 6.dp)
+                                            .background(
+                                                if (page == pagerState.currentPage) {
+                                                    dotActive
+                                                } else {
+                                                    dotIdle
+                                                },
+                                                CircleShape,
+                                            ),
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                TextButton(
+                                    text = "›",
+                                    onClick = {
+                                        val next = pagerState.currentPage + 1
+                                        if (next <= pageCount - 1) {
+                                            scope.launch { pagerState.animateScrollToPage(next) }
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(plateColor, RoundedCornerShape(14.dp))
+                                .padding(4.dp),
+                        ) {
+                            if (plateMode) {
+                                OrderPlatePanel(
+                                    settings = settings,
+                                    persist = persist,
+                                    strong = plateStrong,
+                                    weak = plateWeak,
+                                )
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 12.dp, end = 6.dp, top = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = "已移除",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = plateStrong,
+                                    )
+                                    Text(
+                                        text = if (removed.isEmpty()) "" else "  ${removed.size} 个",
+                                        fontSize = 12.sp,
+                                        color = plateWeak,
+                                    )
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    TextButton(text = "＋ 更多应用", onClick = onAddTargets)
+                                }
+                                if (removed.isEmpty()) {
+                                    Text(
+                                        text = "没有移除的应用",
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp),
+                                        fontSize = 12.sp,
+                                        color = plateWeak,
+                                    )
+                                } else {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = ORDER_REMOVED_AREA_MAX_DP.dp)
+                                            .verticalScroll(rememberScrollState())
+                                            .padding(horizontal = 14.dp, vertical = 2.dp),
+                                    ) {
+                                        removed.toList()
+                                            .chunked(ORDER_ICON_COLUMNS)
+                                            .forEach { rowItems ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(vertical = 3.dp),
+                                                ) {
+                                                    for (column in 0 until ORDER_ICON_COLUMNS) {
+                                                        val target = rowItems.getOrNull(column)
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .height(56.dp),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
+                                                            if (target != null) {
+                                                                RemovedAppChip(
+                                                                    target = target,
+                                                                    normalizedBitmap = iconBitmaps[
+                                                                        target.packageName(),
+                                                                    ],
+                                                                    dragEnabled = editMode && !plateMode,
+                                                                    onPositioned = { offset ->
+                                                                        target.key()?.let { key ->
+                                                                            dragTracker.chipTopLefts[key] =
+                                                                                offset
+                                                                        }
+                                                                    },
+                                                                    onDragStart = {
+                                                                        target.key()?.let { key ->
+                                                                            dragTracker.chipTopLeft =
+                                                                                dragTracker
+                                                                                    .chipTopLefts[key]
+                                                                                    ?: Offset.Zero
+                                                                        }
+                                                                        bottomDragTarget = target
+                                                                        hoverSlot = -1
+                                                                    },
+                                                                    onDrag = { fingerLocal ->
+                                                                        updateBottomDrag(fingerLocal)
+                                                                    },
+                                                                    onDragEnd = { finishBottomDrag() },
+                                                                    onDragCancel = { finishBottomDrag() },
+                                                                    onClick = {
+                                                                        val usable =
+                                                                            SystemClock.uptimeMillis() -
+                                                                                lastBottomDragEndUptime >=
+                                                                                ORDER_TAP_GUARD_MS
+                                                                        if (usable) {
+                                                                            addBack(target)
+                                                                        }
+                                                                    },
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+/**
+ * 拖动过程中的实时数据。
+ *
+ * 刻意用**普通字段**而不是 Compose State：手指每移动一帧都会写它，
+ * 若用 State 会让读取方每帧重组，反而更卡。
+ */
+/**
+ * 拖动过程中的实时数据。
+ *
+ * 刻意用**普通字段**而不是 Compose State：手指每移动一帧都会写它，
+ * 若用 State 会让读取方每帧重组，反而更卡。
+ */
+private class DragTracker {
+    /** 当前手指位置（网格视口坐标）。 */
+    var finger: Offset = Offset.Zero
+
+    /** 抓取瞬间"手指 → 被拖格子中心"的固定偏移，用来把格子稳定地跟在手指下方。 */
+    var grabDelta: Offset = Offset.Zero
+
+    /** 网格容器在窗口坐标系里的左上角。 */
+    var gridTopLeft: Offset = Offset.Zero
+
+    /** 正在拖动的「已移除」chip 在窗口坐标系里的左上角。 */
+    var chipTopLeft: Offset = Offset.Zero
+
+    /** 所有 chip 的窗口坐标（按包名键），布局变化时刷新。 */
+    val chipTopLefts = HashMap<String, Offset>()
+}
+
+/** 排序页小字：固定白色 + 细描影，不随背板/主题变色。 */
+@Composable
+private fun OrderLabel(
+    text: String,
+    modifier: Modifier = Modifier,
+    fontSize: androidx.compose.ui.unit.TextUnit = 11.sp,
+    maxLines: Int = 2,
+) {
+    Text(
+        text = text,
+        modifier = modifier,
+        fontSize = fontSize,
+        color = Color.White,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center,
+        style = TextStyle(
+            shadow = Shadow(color = Color(0x99000000), offset = Offset(0f, 1f), blurRadius = 3f),
+        ),
+    )
+}
+
+/** 「已移除」里的图标 + 名称小字；点一下加回菜单末尾，长按可拖回网格。 */
+@Composable
+private fun RemovedAppChip(
+    target: ShareTarget,
+    normalizedBitmap: Bitmap?,
+    dragEnabled: Boolean,
+    onPositioned: (Offset) -> Unit,
+    onDragStart: () -> Unit,
+    onDrag: (Offset) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .onGloballyPositioned { onPositioned(it.positionInRoot()) }
+            .pointerInput(target.key(), dragEnabled) {
+                if (!dragEnabled) {
+                    return@pointerInput
+                }
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { onDragStart() },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        onDrag(change.position)
+                    },
+                    onDragEnd = { onDragEnd() },
+                    onDragCancel = { onDragCancel() },
+                )
+            }
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        TargetIcon(target = target, size = 30.dp, normalizedBitmap = normalizedBitmap)
+        Spacer(modifier = Modifier.height(3.dp))
+        OrderLabel(
+            text = target.label?.toString() ?: target.key().orEmpty(),
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun OrderCell(
+    target: ShareTarget,
+    normalizedBitmap: Bitmap?,
+    barMode: Boolean,
+    editMode: Boolean,
+    dragging: Boolean,
+    dragOffsetProvider: () -> Offset,
+    badgeRing: Color,
+    onRemove: () -> Unit,
+    onCopy: () -> Unit,
+) {
+    val label = target.label?.toString()?.takeIf { it.isNotBlank() }
+        ?: target.key().orEmpty()
+    val badgeRingColor = badgeRing
+    Box(
+        modifier = Modifier
+            .padding(if (barMode) 4.dp else 6.dp)
+            .graphicsLayer {
+                if (dragging) {
+                    val offset = dragOffsetProvider()
+                    translationX = offset.x
+                    translationY = offset.y
+                    scaleX = 1.06f
+                    scaleY = 1.06f
+                }
+            }
+            .zIndex(if (dragging) 1f else 0f),
+    ) {
+        if (barMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onCopy)
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TargetIcon(target = target, size = 30.dp, normalizedBitmap = normalizedBitmap)
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    OrderLabel(
+                        text = label,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OrderLabel(
+                        text = target.packageName(),
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (editMode) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .background(Color(0x1AE24B4A), CircleShape)
+                            .clickable(onClick = onRemove),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(text = "−", color = Color(0xFFA32D2D), fontSize = 17.sp)
+                    }
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box {
+                    TargetIcon(target = target, size = 34.dp, normalizedBitmap = normalizedBitmap)
+                    if (editMode) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .size(21.dp)
+                                .background(Color(0xFFE24B4A), CircleShape)
+                                .border(2.dp, badgeRingColor, CircleShape)
+                                .clickable(onClick = onRemove),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(text = "−", color = Color.White, fontSize = 13.sp)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                OrderLabel(text = label)
+            }
+        }
+    }
+}
+
+/** 拖回网格时的插入占位（虚线框）。 */
+@Composable
+private fun OrderPlaceholderCell(barMode: Boolean) {
+    Box(
+        modifier = Modifier
+            .padding(if (barMode) 5.dp else 6.dp)
+            .fillMaxSize()
+            .border(1.5.dp, Color(0xFF7F77DD), RoundedCornerShape(10.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = "放这里", fontSize = 12.sp, color = Color(0xFF534AB7))
+    }
+}
+
+/** 「背板」设置面板：三个滑杆，与磨砂菜单共用同一份设置。 */
+@Composable
+private fun OrderPlatePanel(
+    settings: DragShareSettings,
+    persist: (DragShareSettings) -> Unit,
+    strong: Color,
+    weak: Color,
+) {
+    fun update(transform: (DragShareSettings) -> DragShareSettings) = persist(transform(settings))
+    val sliderColors = SliderDefaults.colors(
+        thumbColor = strong,
+        activeTrackColor = strong,
+        inactiveTrackColor = weak,
+    )
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "透明度", fontSize = 12.sp, color = strong)
+            Spacer(modifier = Modifier.weight(1f))
+            Text(text = "${settings.frostedPlateAlphaPercent}%", fontSize = 12.sp, color = weak)
+        }
+        Slider(
+            value = settings.frostedPlateAlphaPercent.toFloat(),
+            onValueChange = { value ->
+                update { current ->
+                    copySettings(current, frostedPlateAlphaPercent = value.roundToInt())
+                }
+            },
+            onValueChangeFinished = {},
+            valueRange = DragShareSettings.MIN_FROSTED_PLATE_ALPHA_PERCENT.toFloat()
+                ..DragShareSettings.MAX_FROSTED_PLATE_ALPHA_PERCENT.toFloat(),
+            colors = sliderColors,
+        )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "磨砂程度", fontSize = 12.sp, color = strong)
+            Spacer(modifier = Modifier.weight(1f))
+            Text(text = "${settings.frostedBlurRadiusDp} dp", fontSize = 12.sp, color = weak)
+        }
+        Slider(
+            value = settings.frostedBlurRadiusDp.toFloat(),
+            onValueChange = { value ->
+                update { current ->
+                    copySettings(current, frostedBlurRadiusDp = value.roundToInt())
+                }
+            },
+            onValueChangeFinished = {},
+            valueRange = DragShareSettings.MIN_FROSTED_BLUR_RADIUS_DP.toFloat()
+                ..DragShareSettings.MAX_FROSTED_BLUR_RADIUS_DP.toFloat(),
+            colors = sliderColors,
+        )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "暗黑程度", fontSize = 12.sp, color = strong)
+            Spacer(modifier = Modifier.weight(1f))
+            Text(text = "${settings.frostedDarknessPercent}%", fontSize = 12.sp, color = weak)
+        }
+        Slider(
+            value = settings.frostedDarknessPercent.toFloat(),
+            onValueChange = { value ->
+                update { current ->
+                    copySettings(current, frostedDarknessPercent = value.roundToInt())
+                }
+            },
+            onValueChangeFinished = {},
+            valueRange = DragShareSettings.MIN_FROSTED_DARKNESS_PERCENT.toFloat()
+                ..DragShareSettings.MAX_FROSTED_DARKNESS_PERCENT.toFloat(),
+            colors = sliderColors,
+        )
+    }
+}
+
+/** 壁纸背景：取当前桌面壁纸铺满。 */
+@Composable
+private fun WallpaperBackdrop(modifier: Modifier) {
+    val context = LocalContext.current
+    val wallpaper by produceState<Bitmap?>(initialValue = null, context) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                WallpaperManager.getInstance(context).drawable?.toBitmap()
+            } catch (_: Throwable) {
+                null
+            }
+        }
+    }
+    val imageBitmap = remember(wallpaper) { wallpaper?.asImageBitmap() }
+    if (imageBitmap != null) {
+        Image(
+            bitmap = imageBitmap,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier,
+        )
+    } else {
+        Box(modifier = modifier.background(Color(0xFF16324F)))
+    }
+}
+
+@Composable
+private fun OrderAddPage(
+    context: Context,
+    settings: DragShareSettings,
+    onBack: () -> Unit,
+    persist: (DragShareSettings) -> Unit,
+) {
+    var targets by remember(context) { mutableStateOf<List<ShareTarget>?>(null) }
+    var iconBitmaps by remember(context) { mutableStateOf<Map<String, Bitmap>>(emptyMap()) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchExpanded by remember { mutableStateOf(false) }
+    val scrollBehavior = MiuixScrollBehavior()
+
+    LaunchedEffect(context) {
+        targets = null
+        val (loaded, loadedIcons) = withContext(Dispatchers.IO) {
+            val all = querySettingsTargets(context).filterNot { it.isBuiltIn() }
+            all to loadSettingsIcons(context, all)
+        }
+        targets = loaded
+        iconBitmaps = loadedIcons
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = "添加应用",
+                largeTitle = "添加应用",
+                scrollBehavior = scrollBehavior,
+                navigationIcon = { BackNavigationIcon(onClick = onBack) },
+            )
+        },
+    ) { paddingValues ->
+        val all = targets
+        if (all == null) {
+            LoadingContent(paddingValues)
+        } else {
+            val query = searchQuery.trim()
+            val filtered = all.filter { target ->
+                val label = target.label?.toString().orEmpty()
+                query.isEmpty() ||
+                    label.contains(query, ignoreCase = true) ||
+                    target.packageName().contains(query, ignoreCase = true)
+            }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
                 contentPadding = paddingValues,
             ) {
-                item(key = "order-title") {
-                    SmallTitle(text = "分享应用顺序")
+                item(key = "order-add-search") {
+                    SearchBar(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        inputField = {
+                            InputField(
+                                query = searchQuery,
+                                onQueryChange = { searchQuery = it },
+                                onSearch = { searchExpanded = false },
+                                expanded = searchExpanded,
+                                onExpandedChange = { searchExpanded = it },
+                                label = "搜索 ${all.size} 个应用",
+                            )
+                        },
+                        expanded = searchExpanded,
+                        onExpandedChange = { searchExpanded = it },
+                    ) {}
                 }
-                if (items.isEmpty()) {
-                    item(key = "order-empty") {
+                if (filtered.isEmpty()) {
+                    item(key = "order-add-empty") {
                         Text(
-                            text = "没有找到可排序的分享应用",
+                            text = "没有匹配的应用",
                             modifier = Modifier.padding(28.dp),
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
                     }
                 } else {
-                    itemsIndexed(
-                        items = items,
-                        key = { _, target -> target.key() ?: target.hashCode().toString() },
-                    ) { index, target ->
-                        DraggableItem(
-                            dragDropState = dragDropState,
-                            index = index + ORDER_LIST_INDEX_OFFSET,
-                        ) { isDragging ->
-                            Card(
-                                modifier = Modifier
-                                    .padding(horizontal = 12.dp, vertical = 3.dp),
-                                cornerRadius = if (isDragging) 16.dp else 12.dp,
-                                holdDownState = isDragging,
-                            ) {
-                                BasicComponent(
-                                    title = target.label?.toString() ?: target.key(),
-                                    summary = target.packageName(),
-                                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-                                    startAction = {
-                                        TargetIcon(
-                                            target = target,
-                                            normalizedBitmap = iconBitmaps[target.packageName()],
-                                        )
-                                    },
-                                    endActions = {
-                                        DropdownArrowEndAction(
-                                            actionColor = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                                        )
-                                    },
-                                )
-                            }
+                    items(
+                        items = filtered,
+                        key = { target -> "order-add:" + (target.key() ?: target.hashCode()) },
+                    ) { target ->
+                        val key = target.key()
+                        val visible = settings.isTargetVisible(key)
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 3.dp),
+                        ) {
+                            BasicComponent(
+                                title = target.label?.toString() ?: key.orEmpty(),
+                                summary = target.packageName(),
+                                insideMargin = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                startAction = {
+                                    TargetIcon(
+                                        target = target,
+                                        modifier = Modifier.padding(end = 10.dp),
+                                        size = 40.dp,
+                                        normalizedBitmap = iconBitmaps[target.packageName()],
+                                    )
+                                },
+                                endActions = {
+                                    Switch(
+                                        checked = visible,
+                                        onCheckedChange = { checked ->
+                                            if (key == null) {
+                                                return@Switch
+                                            }
+                                            val hidden = LinkedHashSet(settings.hiddenTargetKeys)
+                                            if (checked) {
+                                                hidden.remove(key)
+                                            } else {
+                                                hidden.add(key)
+                                            }
+                                            persist(
+                                                copySettings(
+                                                    settings,
+                                                    hiddenTargetKeys = hidden,
+                                                ),
+                                            )
+                                        },
+                                    )
+                                },
+                            )
                         }
                     }
                 }
-                item(key = "order-spacer") {
+                item(key = "order-add-spacer") {
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
@@ -1923,6 +2619,7 @@ private fun queryAccessibilityBlacklistApps(context: Context): List<Accessibilit
         }.thenBy { it.packageName },
     )
 }
+
 
 private fun querySettingsTargets(context: Context): List<ShareTarget> {
     val targets = try {
@@ -2031,9 +2728,10 @@ private fun TargetIcon(
             normalizedBitmap ?: drawableBitmap(target.icon)
         }
     }
-    if (bitmap != null) {
+    val imageBitmap = remember(bitmap) { bitmap?.asImageBitmap() }
+    if (imageBitmap != null) {
         Image(
-            bitmap = bitmap.asImageBitmap(),
+            bitmap = imageBitmap,
             contentDescription = null,
             modifier = modifier.size(size),
         )
@@ -2067,63 +2765,334 @@ private fun drawableBitmap(drawable: Drawable?, squareSizePx: Int? = null): Bitm
     }
 }
 
+/** 取应用显示名，失败时回退成包名。 */
+private fun appLabel(context: Context, packageName: String): String = try {
+    val info = context.packageManager.getApplicationInfo(packageName, 0)
+    info.loadLabel(context.packageManager)?.toString()?.trim().orEmpty().ifBlank { packageName }
+} catch (_: Throwable) {
+    packageName
+}
+
+/**
+ * 翻译候选应用：能处理「分享文本 / 文本处理(PROCESS_TEXT) / 系统翻译」任一 Intent 的已安装应用。
+ * 返回 (显示名, 包名)，按显示名排序。
+ */
+private data class TranslateAppInfo(
+    val packageName: String,
+    val label: String,
+    val iconBitmap: Bitmap?,
+)
+
+/** 应用显示名排序（忽略大小写，再按包名兜底）。 */
+private fun sortedApps(apps: List<TranslateAppInfo>): List<TranslateAppInfo> =
+    apps.sortedWith(
+        compareBy<TranslateAppInfo> { it.label.lowercase(Locale.getDefault()) }
+            .thenBy { it.packageName },
+    )
+
+/** 加载一批包名的 (显示名, 图标)，用于翻译选择器。 */
+private fun loadTranslateApps(
+    context: Context,
+    packageNames: Collection<String>,
+): List<TranslateAppInfo> {
+    val packageManager = context.packageManager
+    val targetSizePx = (48f * context.resources.displayMetrics.density)
+        .roundToInt()
+        .coerceAtLeast(1)
+    val loader = AppIconLoader(targetSizePx, false, context.applicationContext)
+    val apps = packageNames
+        .filter { it.isNotBlank() && it != context.packageName }
+        .mapNotNull { packageName ->
+            val info = try {
+                packageManager.getApplicationInfo(packageName, 0)
+            } catch (_: Throwable) {
+                null
+            } ?: return@mapNotNull null
+            val icon = try {
+                loader.loadIcon(info).also { it.prepareToDraw() }
+            } catch (_: Throwable) {
+                null
+            }
+            TranslateAppInfo(
+                packageName = packageName,
+                label = info.loadLabel(packageManager)?.toString()?.trim().orEmpty()
+                    .ifBlank { packageName },
+                iconBitmap = icon,
+            )
+        }
+    return sortedApps(apps)
+}
+
+/**
+ * 推荐的翻译应用：能处理「分享文本 / 文本处理(PROCESS_TEXT) / 系统翻译」任一 Intent 的已安装应用。
+ *
+ * ACTION_TRANSLATE 也必须带 text/plain（很多 ROM 的翻译入口 filter 带该 mime，不带 type 查不到），
+ * 并统一用 MATCH_DEFAULT_ONLY。
+ */
+private fun queryTranslateCandidates(context: Context): List<TranslateAppInfo> {
+    val packageManager = context.packageManager
+    val packageNames = LinkedHashSet<String>()
+
+    fun collect(intent: Intent) {
+        val resolved = if (Build.VERSION.SDK_INT >= 33) {
+            packageManager.queryIntentActivities(
+                intent,
+                PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong()),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        }
+        for (info in resolved) {
+            info.activityInfo?.packageName?.takeIf { it.isNotBlank() }?.let(packageNames::add)
+        }
+    }
+
+    collect(Intent(Intent.ACTION_SEND).setType("text/plain"))
+    collect(Intent(Intent.ACTION_PROCESS_TEXT).setType("text/plain"))
+    collect(Intent(Intent.ACTION_TRANSLATE).setType("text/plain"))
+    return loadTranslateApps(context, packageNames)
+}
+
+/** 全部已安装应用（含没有启动器的），作为兜底选择源——保证"小爱翻译"这类也能选到。 */
+private fun queryAllApps(context: Context): List<TranslateAppInfo> {
+    val packageManager = context.packageManager
+    val packageNames = LinkedHashSet<String>()
+    try {
+        packageManager.getInstalledApplications(0).forEach { applicationInfo ->
+            applicationInfo.packageName
+                ?.takeIf { it.isNotBlank() }
+                ?.let(packageNames::add)
+        }
+    } catch (_: Throwable) {
+        return emptyList()
+    }
+    return loadTranslateApps(context, packageNames)
+}
+
+@Composable
+private fun TranslateAppPage(
+    context: Context,
+    settings: DragShareSettings,
+    onBack: () -> Unit,
+    persist: (DragShareSettings) -> Unit,
+) {
+    var recommended by remember(context) { mutableStateOf<List<TranslateAppInfo>?>(null) }
+    var allApps by remember(context) { mutableStateOf<List<TranslateAppInfo>?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchExpanded by remember { mutableStateOf(false) }
+    val scrollBehavior = MiuixScrollBehavior()
+
+    LaunchedEffect(context) {
+        recommended = null
+        allApps = null
+        recommended = withContext(Dispatchers.IO) { queryTranslateCandidates(context) }
+        allApps = withContext(Dispatchers.IO) { queryAllApps(context) }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = "翻译应用",
+                largeTitle = "翻译应用",
+                scrollBehavior = scrollBehavior,
+                navigationIcon = { BackNavigationIcon(onClick = onBack) },
+            )
+        },
+    ) { paddingValues ->
+        val rec = recommended
+        val all = allApps
+        if (rec == null || all == null) {
+            LoadingContent(paddingValues)
+        } else {
+            val query = searchQuery.trim()
+            fun matches(app: TranslateAppInfo): Boolean =
+                query.isEmpty() ||
+                    app.label.contains(query, ignoreCase = true) ||
+                    app.packageName.contains(query, ignoreCase = true)
+            val filteredRec = rec.filter(::matches)
+            val filteredAll = all.filter(::matches)
+            val selectedPackage = settings.translateAppPackage
+            val pick: (String) -> Unit = { packageName ->
+                persist(copySettings(settings, translateAppPackage = packageName))
+                onBack()
+            }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+                contentPadding = paddingValues,
+            ) {
+                item(key = "translate-search") {
+                    SearchBar(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        inputField = {
+                            InputField(
+                                query = searchQuery,
+                                onQueryChange = { searchQuery = it },
+                                onSearch = { searchExpanded = false },
+                                expanded = searchExpanded,
+                                onExpandedChange = { searchExpanded = it },
+                                label = "搜索 ${all.size} 个应用",
+                            )
+                        },
+                        expanded = searchExpanded,
+                        onExpandedChange = { searchExpanded = it },
+                    ) {}
+                }
+                item(key = "translate-none") {
+                    TranslateAppRow(
+                        app = null,
+                        selected = selectedPackage.isBlank(),
+                        onClick = { pick("") },
+                    )
+                }
+                if (filteredRec.isNotEmpty()) {
+                    item(key = "translate-recommended-title") {
+                        SmallTitle(text = "推荐的翻译应用（${filteredRec.size}）")
+                    }
+                    items(
+                        items = filteredRec,
+                        key = { app -> "translate-rec:${app.packageName}" },
+                    ) { app ->
+                        TranslateAppRow(
+                            app = app,
+                            selected = app.packageName == selectedPackage,
+                            onClick = { pick(app.packageName) },
+                        )
+                    }
+                }
+                if (filteredAll.isNotEmpty()) {
+                    item(key = "translate-all-title") {
+                        SmallTitle(text = "全部应用（${filteredAll.size}）")
+                    }
+                    items(
+                        items = filteredAll,
+                        key = { app -> "translate-all:${app.packageName}" },
+                    ) { app ->
+                        TranslateAppRow(
+                            app = app,
+                            selected = app.packageName == selectedPackage,
+                            onClick = { pick(app.packageName) },
+                        )
+                    }
+                } else if (filteredRec.isEmpty()) {
+                    item(key = "translate-empty") {
+                        Text(
+                            text = "没有匹配的应用",
+                            modifier = Modifier.padding(28.dp),
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                }
+                item(key = "translate-spacer") {
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+        }
+    }
+}
+
+/** app == null 表示"无（复制文字 + 提示）"这一项。 */
+@Composable
+private fun TranslateAppRow(
+    app: TranslateAppInfo?,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 3.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val bitmap = app?.iconBitmap
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                )
+            } else {
+                Spacer(modifier = Modifier.size(40.dp))
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = app?.label ?: "无（复制文字 + 提示）",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = app?.packageName ?: "只把文字放进剪贴板并提示",
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (selected) {
+                Text(
+                    text = "已选",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
 private fun copySettings(
     current: DragShareSettings,
     colorMode: Int = current.colorMode,
-    uiStyle: Int = current.uiStyle,
-    edgeTriggerDp: Int = current.edgeTriggerDp,
-    scrollSpeedDp: Int = current.scrollSpeedDpPerSecond,
-    blockBackgroundScroll: Boolean = current.blockBackgroundScroll,
-    contentCaptureMode: Int = current.contentCaptureMode,
     textSharingEnabled: Boolean = current.textSharingEnabled,
     imageSharingEnabled: Boolean = current.imageSharingEnabled,
-    preloadTextSegmenter: Boolean = current.preloadTextSegmenter,
-    simpleMenuPosition: Int = current.simpleMenuPosition,
-    simpleMenuOpacityPercent: Int = current.simpleMenuOpacityPercent,
-    simpleMenuCornerRadiusDp: Int = current.simpleMenuCornerRadiusDp,
-    simpleMenuEdgeDistanceDp: Int = current.simpleMenuEdgeDistanceDp,
-    iconOpacityPercent: Int = current.iconOpacityPercent,
-    modernBlurRadiusDp: Int = current.modernBlurRadiusDp,
-    modernGlassOpacityPercent: Int = current.modernGlassOpacityPercent,
-    closeMenuWhenPointerLeaves: Boolean = current.closeMenuWhenPointerLeaves,
     hiddenTargetKeys: Set<String> = current.hiddenTargetKeys,
     targetOrder: List<String> = current.targetOrder,
+    contentCaptureMode: Int = current.contentCaptureMode,
     accessibilityLandscapeRecognitionEnabled: Boolean =
         current.accessibilityLandscapeRecognitionEnabled,
     accessibilityBlacklistedPackages: Set<String> = current.accessibilityBlacklistedPackages,
     accessibilityLongPressTimeoutMillis: Int = current.accessibilityLongPressTimeoutMillis,
     accessibilityRecognitionSensitivityPercent: Int =
         current.accessibilityRecognitionSensitivityPercent,
+    preloadTextSegmenter: Boolean = current.preloadTextSegmenter,
     logLevel: Int = current.logLevel,
     logDestination: Int = current.logDestination,
     sharedCopyLocation: Int = current.sharedCopyLocation,
+    frostedPlateAlphaPercent: Int = current.frostedPlateAlphaPercent,
+    frostedBlurRadiusDp: Int = current.frostedBlurRadiusDp,
+    frostedDarknessPercent: Int = current.frostedDarknessPercent,
+    translateAppPackage: String = current.translateAppPackage,
 ): DragShareSettings = DragShareSettings(
-    colorMode,
-    uiStyle,
-    edgeTriggerDp,
-    scrollSpeedDp,
-    blockBackgroundScroll,
-    textSharingEnabled,
-    imageSharingEnabled,
-    simpleMenuPosition,
-    simpleMenuOpacityPercent,
-    simpleMenuCornerRadiusDp,
-    simpleMenuEdgeDistanceDp,
-    iconOpacityPercent,
-    closeMenuWhenPointerLeaves,
-    hiddenTargetKeys,
-    targetOrder,
-    contentCaptureMode,
-    accessibilityLandscapeRecognitionEnabled,
-    accessibilityBlacklistedPackages,
-    accessibilityLongPressTimeoutMillis,
-    accessibilityRecognitionSensitivityPercent,
-    preloadTextSegmenter,
-    modernBlurRadiusDp,
-    modernGlassOpacityPercent,
-    logLevel,
-    logDestination,
-    sharedCopyLocation,
+    colorMode = colorMode,
+    textSharingEnabled = textSharingEnabled,
+    imageSharingEnabled = imageSharingEnabled,
+    hiddenTargetKeys = hiddenTargetKeys,
+    targetOrder = targetOrder,
+    contentCaptureMode = contentCaptureMode,
+    accessibilityLandscapeRecognitionEnabled = accessibilityLandscapeRecognitionEnabled,
+    accessibilityBlacklistedPackages = accessibilityBlacklistedPackages,
+    accessibilityLongPressTimeoutMillis = accessibilityLongPressTimeoutMillis,
+    accessibilityRecognitionSensitivityPercent = accessibilityRecognitionSensitivityPercent,
+    preloadTextSegmenter = preloadTextSegmenter,
+    logLevel = logLevel,
+    logDestination = logDestination,
+    sharedCopyLocation = sharedCopyLocation,
+    frostedPlateAlphaPercent = frostedPlateAlphaPercent,
+    frostedBlurRadiusDp = frostedBlurRadiusDp,
+    frostedDarknessPercent = frostedDarknessPercent,
+    translateAppPackage = translateAppPackage,
 )
 
 @Suppress("DEPRECATION")

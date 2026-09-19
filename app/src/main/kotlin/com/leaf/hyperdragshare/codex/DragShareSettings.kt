@@ -11,18 +11,8 @@ import java.util.LinkedHashSet
 /** Shared settings stored by the module and read by the injected portal process. */
 internal class DragShareSettings(
     colorMode: Int,
-    uiStyle: Int,
-    edgeTriggerDp: Int,
-    scrollSpeedDpPerSecond: Int,
-    blockBackgroundScroll: Boolean,
     textSharingEnabled: Boolean,
     imageSharingEnabled: Boolean,
-    simpleMenuPosition: Int,
-    simpleMenuOpacityPercent: Int,
-    simpleMenuCornerRadiusDp: Int,
-    simpleMenuEdgeDistanceDp: Int,
-    iconOpacityPercent: Int,
-    closeMenuWhenPointerLeaves: Boolean,
     hiddenTargetKeys: Set<String>?,
     targetOrder: List<String>?,
     contentCaptureMode: Int,
@@ -31,45 +21,23 @@ internal class DragShareSettings(
     accessibilityLongPressTimeoutMillis: Int,
     accessibilityRecognitionSensitivityPercent: Int,
     preloadTextSegmenter: Boolean,
-    modernBlurRadiusDp: Int,
-    modernGlassOpacityPercent: Int,
     logLevel: Int,
     logDestination: Int,
     sharedCopyLocation: Int,
+    frostedPlateAlphaPercent: Int,
+    frostedBlurRadiusDp: Int,
+    frostedDarknessPercent: Int,
+    translateAppPackage: String?,
 ) {
     val colorMode: Int
 
     val contentCaptureMode: Int
-
-    val uiStyle: Int
-
-    val edgeTriggerDp: Int
-
-    val scrollSpeedDpPerSecond: Int
-
-    val blockBackgroundScroll: Boolean
 
     val textSharingEnabled: Boolean
 
     val imageSharingEnabled: Boolean
 
     val preloadTextSegmenter: Boolean
-
-    val simpleMenuPosition: Int
-
-    val simpleMenuOpacityPercent: Int
-
-    val simpleMenuCornerRadiusDp: Int
-
-    val simpleMenuEdgeDistanceDp: Int
-
-    val iconOpacityPercent: Int
-
-    val modernBlurRadiusDp: Int
-
-    val modernGlassOpacityPercent: Int
-
-    val closeMenuWhenPointerLeaves: Boolean
 
     val hiddenTargetKeys: Set<String>
 
@@ -89,65 +57,27 @@ internal class DragShareSettings(
 
     val sharedCopyLocation: Int
 
+    /** 磨砂面板背板不透明度（%）：越低越透出背后的模糊内容。 */
+    val frostedPlateAlphaPercent: Int
+
+    /** 磨砂程度（背景模糊半径 dp）：0 = 不模糊。 */
+    val frostedBlurRadiusDp: Int
+
+    /** 磨砂面板暗黑程度（%）：0 = 白玻璃，100 = 纯黑。 */
+    val frostedDarknessPercent: Int
+
+    /**
+     * 翻译按钮要交给哪个应用（包名）。空串 = 不指定，保持"复制文字 + 提示"的原有行为。
+     */
+    val translateAppPackage: String
+
     /** Full constructor including diagnostic logging configuration. */
     init {
         this.colorMode = if (colorMode == COLOR_DARK) COLOR_DARK else COLOR_LIGHT
         this.contentCaptureMode = normalizeContentCaptureMode(contentCaptureMode)
-        this.uiStyle = if (uiStyle == STYLE_SIMPLE ||
-            uiStyle == STYLE_PORTAL ||
-            uiStyle == STYLE_CIRCLE ||
-            uiStyle == STYLE_MODERN
-        ) {
-            uiStyle
-        } else {
-            DEFAULT_UI_STYLE
-        }
-        this.edgeTriggerDp = clamp(
-            edgeTriggerDp,
-            MIN_EDGE_TRIGGER_DP,
-            MAX_EDGE_TRIGGER_DP,
-        )
-        this.scrollSpeedDpPerSecond = clamp(
-            scrollSpeedDpPerSecond,
-            MIN_SCROLL_SPEED_DP_PER_SECOND,
-            MAX_SCROLL_SPEED_DP_PER_SECOND,
-        )
-        this.blockBackgroundScroll = blockBackgroundScroll
         this.textSharingEnabled = textSharingEnabled
         this.imageSharingEnabled = imageSharingEnabled
         this.preloadTextSegmenter = preloadTextSegmenter
-        this.simpleMenuPosition = normalizeSimpleMenuPosition(simpleMenuPosition)
-        this.simpleMenuOpacityPercent = clamp(
-            simpleMenuOpacityPercent,
-            MIN_SIMPLE_MENU_OPACITY_PERCENT,
-            MAX_SIMPLE_MENU_OPACITY_PERCENT,
-        )
-        this.simpleMenuCornerRadiusDp = clamp(
-            simpleMenuCornerRadiusDp,
-            MIN_SIMPLE_MENU_CORNER_RADIUS_DP,
-            MAX_SIMPLE_MENU_CORNER_RADIUS_DP,
-        )
-        this.simpleMenuEdgeDistanceDp = clamp(
-            simpleMenuEdgeDistanceDp,
-            MIN_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            MAX_SIMPLE_MENU_EDGE_DISTANCE_DP,
-        )
-        this.iconOpacityPercent = clamp(
-            iconOpacityPercent,
-            MIN_ICON_OPACITY_PERCENT,
-            MAX_ICON_OPACITY_PERCENT,
-        )
-        this.modernBlurRadiusDp = clamp(
-            modernBlurRadiusDp,
-            MIN_MODERN_BLUR_RADIUS_DP,
-            MAX_MODERN_BLUR_RADIUS_DP,
-        )
-        this.modernGlassOpacityPercent = clamp(
-            modernGlassOpacityPercent,
-            MIN_MODERN_GLASS_OPACITY_PERCENT,
-            MAX_MODERN_GLASS_OPACITY_PERCENT,
-        )
-        this.closeMenuWhenPointerLeaves = closeMenuWhenPointerLeaves
         this.hiddenTargetKeys = immutableKeys(normalizeHiddenTargetKeys(hiddenTargetKeys))
         this.targetOrder = immutableKeysAsList(targetOrder)
         this.accessibilityLandscapeRecognitionEnabled =
@@ -164,490 +94,23 @@ internal class DragShareSettings(
         this.logLevel = normalizeLogLevel(logLevel)
         this.logDestination = normalizeLogDestination(logDestination)
         this.sharedCopyLocation = normalizeSharedCopyLocation(sharedCopyLocation)
+        this.frostedPlateAlphaPercent = clamp(
+            frostedPlateAlphaPercent,
+            MIN_FROSTED_PLATE_ALPHA_PERCENT,
+            MAX_FROSTED_PLATE_ALPHA_PERCENT,
+        )
+        this.frostedBlurRadiusDp = clamp(
+            frostedBlurRadiusDp,
+            MIN_FROSTED_BLUR_RADIUS_DP,
+            MAX_FROSTED_BLUR_RADIUS_DP,
+        )
+        this.frostedDarknessPercent = clamp(
+            frostedDarknessPercent,
+            MIN_FROSTED_DARKNESS_PERCENT,
+            MAX_FROSTED_DARKNESS_PERCENT,
+        )
+        this.translateAppPackage = translateAppPackage?.trim().orEmpty()
     }
-
-    /** Backward-compatible constructor for callers using the original settings shape. */
-    constructor(colorMode: Int, edgeTriggerDp: Int, scrollSpeedDpPerSecond: Int) : this(
-        colorMode,
-        DEFAULT_UI_STYLE,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        DEFAULT_BLOCK_BACKGROUND_SCROLL,
-        DEFAULT_TEXT_SHARING_ENABLED,
-        DEFAULT_IMAGE_SHARING_ENABLED,
-        DEFAULT_SIMPLE_MENU_POSITION,
-        DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-        DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-        DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-        DEFAULT_ICON_OPACITY_PERCENT,
-        DEFAULT_CLOSE_MENU_WHEN_POINTER_LEAVES,
-        emptySet(),
-        emptyList(),
-    )
-
-    constructor(
-        colorMode: Int,
-        uiStyle: Int,
-        edgeTriggerDp: Int,
-        scrollSpeedDpPerSecond: Int,
-        blockBackgroundScroll: Boolean,
-    ) : this(
-        colorMode,
-        uiStyle,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        blockBackgroundScroll,
-        DEFAULT_TEXT_SHARING_ENABLED,
-        DEFAULT_IMAGE_SHARING_ENABLED,
-        DEFAULT_SIMPLE_MENU_POSITION,
-        DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-        DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-        DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-        DEFAULT_ICON_OPACITY_PERCENT,
-        DEFAULT_CLOSE_MENU_WHEN_POINTER_LEAVES,
-        emptySet(),
-        emptyList(),
-    )
-
-    /** Backward-compatible constructor for callers that predate simple-menu options. */
-    constructor(
-        colorMode: Int,
-        uiStyle: Int,
-        edgeTriggerDp: Int,
-        scrollSpeedDpPerSecond: Int,
-        blockBackgroundScroll: Boolean,
-        textSharingEnabled: Boolean,
-        imageSharingEnabled: Boolean,
-        hiddenTargetKeys: Set<String>?,
-        targetOrder: List<String>?,
-    ) : this(
-        colorMode,
-        uiStyle,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        blockBackgroundScroll,
-        textSharingEnabled,
-        imageSharingEnabled,
-        DEFAULT_SIMPLE_MENU_POSITION,
-        DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-        DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-        DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-        DEFAULT_ICON_OPACITY_PERCENT,
-        DEFAULT_CLOSE_MENU_WHEN_POINTER_LEAVES,
-        hiddenTargetKeys,
-        targetOrder,
-    )
-
-    constructor(
-        colorMode: Int,
-        uiStyle: Int,
-        edgeTriggerDp: Int,
-        scrollSpeedDpPerSecond: Int,
-        blockBackgroundScroll: Boolean,
-        textSharingEnabled: Boolean,
-        imageSharingEnabled: Boolean,
-        simpleMenuPosition: Int,
-        simpleMenuOpacityPercent: Int,
-        simpleMenuCornerRadiusDp: Int,
-        closeMenuWhenPointerLeaves: Boolean,
-        hiddenTargetKeys: Set<String>?,
-        targetOrder: List<String>?,
-    ) : this(
-        colorMode,
-        uiStyle,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        blockBackgroundScroll,
-        textSharingEnabled,
-        imageSharingEnabled,
-        simpleMenuPosition,
-        simpleMenuOpacityPercent,
-        simpleMenuCornerRadiusDp,
-        DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-        DEFAULT_ICON_OPACITY_PERCENT,
-        closeMenuWhenPointerLeaves,
-        hiddenTargetKeys,
-        targetOrder,
-    )
-
-    constructor(
-        colorMode: Int,
-        uiStyle: Int,
-        edgeTriggerDp: Int,
-        scrollSpeedDpPerSecond: Int,
-        blockBackgroundScroll: Boolean,
-        textSharingEnabled: Boolean,
-        imageSharingEnabled: Boolean,
-        simpleMenuPosition: Int,
-        simpleMenuOpacityPercent: Int,
-        simpleMenuCornerRadiusDp: Int,
-        simpleMenuEdgeDistanceDp: Int,
-        iconOpacityPercent: Int,
-        closeMenuWhenPointerLeaves: Boolean,
-        hiddenTargetKeys: Set<String>?,
-        targetOrder: List<String>?,
-    ) : this(
-        colorMode,
-        uiStyle,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        blockBackgroundScroll,
-        textSharingEnabled,
-        imageSharingEnabled,
-        simpleMenuPosition,
-        simpleMenuOpacityPercent,
-        simpleMenuCornerRadiusDp,
-        simpleMenuEdgeDistanceDp,
-        iconOpacityPercent,
-        closeMenuWhenPointerLeaves,
-        hiddenTargetKeys,
-        targetOrder,
-        DEFAULT_CONTENT_CAPTURE_MODE,
-    )
-
-    /** Full constructor. Invalid capture modes intentionally migrate to the portal default. */
-    constructor(
-        colorMode: Int,
-        uiStyle: Int,
-        edgeTriggerDp: Int,
-        scrollSpeedDpPerSecond: Int,
-        blockBackgroundScroll: Boolean,
-        textSharingEnabled: Boolean,
-        imageSharingEnabled: Boolean,
-        simpleMenuPosition: Int,
-        simpleMenuOpacityPercent: Int,
-        simpleMenuCornerRadiusDp: Int,
-        simpleMenuEdgeDistanceDp: Int,
-        iconOpacityPercent: Int,
-        closeMenuWhenPointerLeaves: Boolean,
-        hiddenTargetKeys: Set<String>?,
-        targetOrder: List<String>?,
-        contentCaptureMode: Int,
-    ) : this(
-        colorMode,
-        uiStyle,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        blockBackgroundScroll,
-        textSharingEnabled,
-        imageSharingEnabled,
-        simpleMenuPosition,
-        simpleMenuOpacityPercent,
-        simpleMenuCornerRadiusDp,
-        simpleMenuEdgeDistanceDp,
-        iconOpacityPercent,
-        closeMenuWhenPointerLeaves,
-        hiddenTargetKeys,
-        targetOrder,
-        contentCaptureMode,
-        DEFAULT_ACCESSIBILITY_LANDSCAPE_RECOGNITION_ENABLED,
-        emptySet(),
-    )
-
-    /** Full constructor including accessibility-only recognition settings. */
-    constructor(
-        colorMode: Int,
-        uiStyle: Int,
-        edgeTriggerDp: Int,
-        scrollSpeedDpPerSecond: Int,
-        blockBackgroundScroll: Boolean,
-        textSharingEnabled: Boolean,
-        imageSharingEnabled: Boolean,
-        simpleMenuPosition: Int,
-        simpleMenuOpacityPercent: Int,
-        simpleMenuCornerRadiusDp: Int,
-        simpleMenuEdgeDistanceDp: Int,
-        iconOpacityPercent: Int,
-        closeMenuWhenPointerLeaves: Boolean,
-        hiddenTargetKeys: Set<String>?,
-        targetOrder: List<String>?,
-        contentCaptureMode: Int,
-        accessibilityLandscapeRecognitionEnabled: Boolean,
-        accessibilityBlacklistedPackages: Set<String>?,
-    ) : this(
-        colorMode,
-        uiStyle,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        blockBackgroundScroll,
-        textSharingEnabled,
-        imageSharingEnabled,
-        simpleMenuPosition,
-        simpleMenuOpacityPercent,
-        simpleMenuCornerRadiusDp,
-        simpleMenuEdgeDistanceDp,
-        iconOpacityPercent,
-        closeMenuWhenPointerLeaves,
-        hiddenTargetKeys,
-        targetOrder,
-        contentCaptureMode,
-        accessibilityLandscapeRecognitionEnabled,
-        accessibilityBlacklistedPackages,
-        DEFAULT_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
-        DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
-    )
-
-    /** Full constructor including all accessibility-only recognition settings. */
-    constructor(
-        colorMode: Int,
-        uiStyle: Int,
-        edgeTriggerDp: Int,
-        scrollSpeedDpPerSecond: Int,
-        blockBackgroundScroll: Boolean,
-        textSharingEnabled: Boolean,
-        imageSharingEnabled: Boolean,
-        simpleMenuPosition: Int,
-        simpleMenuOpacityPercent: Int,
-        simpleMenuCornerRadiusDp: Int,
-        simpleMenuEdgeDistanceDp: Int,
-        iconOpacityPercent: Int,
-        closeMenuWhenPointerLeaves: Boolean,
-        hiddenTargetKeys: Set<String>?,
-        targetOrder: List<String>?,
-        contentCaptureMode: Int,
-        accessibilityLandscapeRecognitionEnabled: Boolean,
-        accessibilityBlacklistedPackages: Set<String>?,
-        accessibilityLongPressTimeoutMillis: Int,
-        accessibilityRecognitionSensitivityPercent: Int,
-    ) : this(
-        colorMode,
-        uiStyle,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        blockBackgroundScroll,
-        textSharingEnabled,
-        imageSharingEnabled,
-        simpleMenuPosition,
-        simpleMenuOpacityPercent,
-        simpleMenuCornerRadiusDp,
-        simpleMenuEdgeDistanceDp,
-        iconOpacityPercent,
-        closeMenuWhenPointerLeaves,
-        hiddenTargetKeys,
-        targetOrder,
-        contentCaptureMode,
-        accessibilityLandscapeRecognitionEnabled,
-        accessibilityBlacklistedPackages,
-        accessibilityLongPressTimeoutMillis,
-        accessibilityRecognitionSensitivityPercent,
-        DEFAULT_PRELOAD_TEXT_SEGMENTER,
-    )
-
-    /** Full constructor including all accessibility settings and tokenizer warm-up preference. */
-    constructor(
-        colorMode: Int,
-        uiStyle: Int,
-        edgeTriggerDp: Int,
-        scrollSpeedDpPerSecond: Int,
-        blockBackgroundScroll: Boolean,
-        textSharingEnabled: Boolean,
-        imageSharingEnabled: Boolean,
-        simpleMenuPosition: Int,
-        simpleMenuOpacityPercent: Int,
-        simpleMenuCornerRadiusDp: Int,
-        simpleMenuEdgeDistanceDp: Int,
-        iconOpacityPercent: Int,
-        closeMenuWhenPointerLeaves: Boolean,
-        hiddenTargetKeys: Set<String>?,
-        targetOrder: List<String>?,
-        contentCaptureMode: Int,
-        accessibilityLandscapeRecognitionEnabled: Boolean,
-        accessibilityBlacklistedPackages: Set<String>?,
-        accessibilityLongPressTimeoutMillis: Int,
-        accessibilityRecognitionSensitivityPercent: Int,
-        preloadTextSegmenter: Boolean,
-    ) : this(
-        colorMode,
-        uiStyle,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        blockBackgroundScroll,
-        textSharingEnabled,
-        imageSharingEnabled,
-        simpleMenuPosition,
-        simpleMenuOpacityPercent,
-        simpleMenuCornerRadiusDp,
-        simpleMenuEdgeDistanceDp,
-        iconOpacityPercent,
-        closeMenuWhenPointerLeaves,
-        hiddenTargetKeys,
-        targetOrder,
-        contentCaptureMode,
-        accessibilityLandscapeRecognitionEnabled,
-        accessibilityBlacklistedPackages,
-        accessibilityLongPressTimeoutMillis,
-        accessibilityRecognitionSensitivityPercent,
-        preloadTextSegmenter,
-        DEFAULT_MODERN_BLUR_RADIUS_DP,
-        DEFAULT_MODERN_GLASS_OPACITY_PERCENT,
-    )
-
-    /**
-     * Compatibility constructor for the per-payload copy switches used before copy actions
-     * became independently visible menu targets.
-     */
-    constructor(
-        colorMode: Int,
-        uiStyle: Int,
-        edgeTriggerDp: Int,
-        scrollSpeedDpPerSecond: Int,
-        blockBackgroundScroll: Boolean,
-        textSharingEnabled: Boolean,
-        imageSharingEnabled: Boolean,
-        simpleMenuPosition: Int,
-        simpleMenuOpacityPercent: Int,
-        simpleMenuCornerRadiusDp: Int,
-        simpleMenuEdgeDistanceDp: Int,
-        iconOpacityPercent: Int,
-        closeMenuWhenPointerLeaves: Boolean,
-        hiddenTargetKeys: Set<String>?,
-        targetOrder: List<String>?,
-        contentCaptureMode: Int,
-        accessibilityLandscapeRecognitionEnabled: Boolean,
-        accessibilityBlacklistedPackages: Set<String>?,
-        accessibilityLongPressTimeoutMillis: Int,
-        accessibilityRecognitionSensitivityPercent: Int,
-        preloadTextSegmenter: Boolean,
-        textCopyEnabled: Boolean,
-        imageCopyEnabled: Boolean,
-    ) : this(
-        colorMode,
-        uiStyle,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        blockBackgroundScroll,
-        textSharingEnabled,
-        imageSharingEnabled,
-        simpleMenuPosition,
-        simpleMenuOpacityPercent,
-        simpleMenuCornerRadiusDp,
-        simpleMenuEdgeDistanceDp,
-        iconOpacityPercent,
-        closeMenuWhenPointerLeaves,
-        migrateLegacyCopyTargetVisibility(
-            hiddenTargetKeys,
-            textCopyEnabled,
-            imageCopyEnabled,
-        ),
-        targetOrder,
-        contentCaptureMode,
-        accessibilityLandscapeRecognitionEnabled,
-        accessibilityBlacklistedPackages,
-        accessibilityLongPressTimeoutMillis,
-        accessibilityRecognitionSensitivityPercent,
-        preloadTextSegmenter,
-        DEFAULT_MODERN_BLUR_RADIUS_DP,
-        DEFAULT_MODERN_GLASS_OPACITY_PERCENT,
-    )
-
-    /** Full constructor including Miuix modern-overlay blur parameters. */
-    constructor(
-        colorMode: Int,
-        uiStyle: Int,
-        edgeTriggerDp: Int,
-        scrollSpeedDpPerSecond: Int,
-        blockBackgroundScroll: Boolean,
-        textSharingEnabled: Boolean,
-        imageSharingEnabled: Boolean,
-        simpleMenuPosition: Int,
-        simpleMenuOpacityPercent: Int,
-        simpleMenuCornerRadiusDp: Int,
-        simpleMenuEdgeDistanceDp: Int,
-        iconOpacityPercent: Int,
-        closeMenuWhenPointerLeaves: Boolean,
-        hiddenTargetKeys: Set<String>?,
-        targetOrder: List<String>?,
-        contentCaptureMode: Int,
-        accessibilityLandscapeRecognitionEnabled: Boolean,
-        accessibilityBlacklistedPackages: Set<String>?,
-        accessibilityLongPressTimeoutMillis: Int,
-        accessibilityRecognitionSensitivityPercent: Int,
-        preloadTextSegmenter: Boolean,
-        modernBlurRadiusDp: Int,
-        modernGlassOpacityPercent: Int,
-    ) : this(
-        colorMode,
-        uiStyle,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        blockBackgroundScroll,
-        textSharingEnabled,
-        imageSharingEnabled,
-        simpleMenuPosition,
-        simpleMenuOpacityPercent,
-        simpleMenuCornerRadiusDp,
-        simpleMenuEdgeDistanceDp,
-        iconOpacityPercent,
-        closeMenuWhenPointerLeaves,
-        hiddenTargetKeys,
-        targetOrder,
-        contentCaptureMode,
-        accessibilityLandscapeRecognitionEnabled,
-        accessibilityBlacklistedPackages,
-        accessibilityLongPressTimeoutMillis,
-        accessibilityRecognitionSensitivityPercent,
-        preloadTextSegmenter,
-        modernBlurRadiusDp,
-        modernGlassOpacityPercent,
-        DEFAULT_LOG_LEVEL,
-        DEFAULT_LOG_DESTINATION,
-    )
-
-    /** Backward-compatible constructor for callers that predate the shared-copy choice. */
-    constructor(
-    colorMode: Int,
-    uiStyle: Int,
-    edgeTriggerDp: Int,
-    scrollSpeedDpPerSecond: Int,
-    blockBackgroundScroll: Boolean,
-    textSharingEnabled: Boolean,
-    imageSharingEnabled: Boolean,
-    simpleMenuPosition: Int,
-    simpleMenuOpacityPercent: Int,
-    simpleMenuCornerRadiusDp: Int,
-    simpleMenuEdgeDistanceDp: Int,
-    iconOpacityPercent: Int,
-    closeMenuWhenPointerLeaves: Boolean,
-    hiddenTargetKeys: Set<String>?,
-    targetOrder: List<String>?,
-    contentCaptureMode: Int,
-    accessibilityLandscapeRecognitionEnabled: Boolean,
-    accessibilityBlacklistedPackages: Set<String>?,
-    accessibilityLongPressTimeoutMillis: Int,
-    accessibilityRecognitionSensitivityPercent: Int,
-    preloadTextSegmenter: Boolean,
-    modernBlurRadiusDp: Int,
-    modernGlassOpacityPercent: Int,
-    logLevel: Int,
-    logDestination: Int,
-    ) : this(
-        colorMode,
-        uiStyle,
-        edgeTriggerDp,
-        scrollSpeedDpPerSecond,
-        blockBackgroundScroll,
-        textSharingEnabled,
-        imageSharingEnabled,
-        simpleMenuPosition,
-        simpleMenuOpacityPercent,
-        simpleMenuCornerRadiusDp,
-        simpleMenuEdgeDistanceDp,
-        iconOpacityPercent,
-        closeMenuWhenPointerLeaves,
-        hiddenTargetKeys,
-        targetOrder,
-        contentCaptureMode,
-        accessibilityLandscapeRecognitionEnabled,
-        accessibilityBlacklistedPackages,
-        accessibilityLongPressTimeoutMillis,
-        accessibilityRecognitionSensitivityPercent,
-        preloadTextSegmenter,
-        modernBlurRadiusDp,
-        modernGlassOpacityPercent,
-        logLevel,
-        logDestination,
-        DEFAULT_SHARED_COPY_LOCATION,
-    )
 
     fun saveLocal(context: Context?) {
         if (context == null) {
@@ -657,26 +120,11 @@ internal class DragShareSettings(
             .edit()
             .putInt(KEY_COLOR_MODE, colorMode)
             .putInt(KEY_CONTENT_CAPTURE_MODE, contentCaptureMode)
-            .putInt(KEY_UI_STYLE, uiStyle)
-            .putInt(KEY_EDGE_TRIGGER_DP, edgeTriggerDp)
-            .putInt(KEY_SCROLL_SPEED, scrollSpeedDpPerSecond)
-            .putBoolean(KEY_BLOCK_BACKGROUND_SCROLL, blockBackgroundScroll)
             .putBoolean(KEY_TEXT_SHARING_ENABLED, textSharingEnabled)
             .putBoolean(KEY_IMAGE_SHARING_ENABLED, imageSharingEnabled)
             .remove(KEY_TEXT_COPY_ENABLED)
             .remove(KEY_IMAGE_COPY_ENABLED)
             .putBoolean(KEY_PRELOAD_TEXT_SEGMENTER, preloadTextSegmenter)
-            .putInt(KEY_SIMPLE_MENU_POSITION, simpleMenuPosition)
-            .putInt(KEY_SIMPLE_MENU_OPACITY, simpleMenuOpacityPercent)
-            .putInt(KEY_SIMPLE_MENU_CORNER_RADIUS, simpleMenuCornerRadiusDp)
-            .putInt(KEY_SIMPLE_MENU_EDGE_DISTANCE, simpleMenuEdgeDistanceDp)
-            .putInt(KEY_ICON_OPACITY, iconOpacityPercent)
-            .putInt(KEY_MODERN_BLUR_RADIUS, modernBlurRadiusDp)
-            .putInt(KEY_MODERN_GLASS_OPACITY, modernGlassOpacityPercent)
-            .putBoolean(
-                KEY_CLOSE_MENU_WHEN_POINTER_LEAVES,
-                closeMenuWhenPointerLeaves,
-            )
             .putStringSet(KEY_HIDDEN_TARGETS, LinkedHashSet(hiddenTargetKeys))
             .putString(KEY_TARGET_ORDER, joinKeys(targetOrder))
             .putBoolean(
@@ -698,6 +146,11 @@ internal class DragShareSettings(
             .putInt(KEY_LOG_LEVEL, logLevel)
             .putInt(KEY_LOG_DESTINATION, logDestination)
             .putInt(KEY_SHARED_COPY_LOCATION, sharedCopyLocation)
+            .putInt(KEY_FROSTED_PLATE_ALPHA, frostedPlateAlphaPercent)
+            .putInt(KEY_FROSTED_BLUR_RADIUS, frostedBlurRadiusDp)
+            .putInt(KEY_FROSTED_DARKNESS, frostedDarknessPercent)
+            .putString(KEY_TRANSLATE_APP_PACKAGE, translateAppPackage)
+
             .apply()
         DragShareLog.configure(this)
         DragShareLog.i(
@@ -711,10 +164,6 @@ internal class DragShareSettings(
         val result = Bundle()
         result.putInt(KEY_COLOR_MODE, colorMode)
         result.putInt(KEY_CONTENT_CAPTURE_MODE, contentCaptureMode)
-        result.putInt(KEY_UI_STYLE, uiStyle)
-        result.putInt(KEY_EDGE_TRIGGER_DP, edgeTriggerDp)
-        result.putInt(KEY_SCROLL_SPEED, scrollSpeedDpPerSecond)
-        result.putBoolean(KEY_BLOCK_BACKGROUND_SCROLL, blockBackgroundScroll)
         result.putBoolean(KEY_TEXT_SHARING_ENABLED, textSharingEnabled)
         result.putBoolean(KEY_IMAGE_SHARING_ENABLED, imageSharingEnabled)
         // Keep an older injected process aligned until it reloads this module version.
@@ -727,14 +176,6 @@ internal class DragShareSettings(
             isTargetVisible(TARGET_COPY_IMAGE),
         )
         result.putBoolean(KEY_PRELOAD_TEXT_SEGMENTER, preloadTextSegmenter)
-        result.putInt(KEY_SIMPLE_MENU_POSITION, simpleMenuPosition)
-        result.putInt(KEY_SIMPLE_MENU_OPACITY, simpleMenuOpacityPercent)
-        result.putInt(KEY_SIMPLE_MENU_CORNER_RADIUS, simpleMenuCornerRadiusDp)
-        result.putInt(KEY_SIMPLE_MENU_EDGE_DISTANCE, simpleMenuEdgeDistanceDp)
-        result.putInt(KEY_ICON_OPACITY, iconOpacityPercent)
-        result.putInt(KEY_MODERN_BLUR_RADIUS, modernBlurRadiusDp)
-        result.putInt(KEY_MODERN_GLASS_OPACITY, modernGlassOpacityPercent)
-        result.putBoolean(KEY_CLOSE_MENU_WHEN_POINTER_LEAVES, closeMenuWhenPointerLeaves)
         result.putStringArrayList(KEY_HIDDEN_TARGETS, ArrayList(hiddenTargetKeys))
         result.putStringArrayList(KEY_TARGET_ORDER, ArrayList(targetOrder))
         result.putBoolean(
@@ -756,6 +197,10 @@ internal class DragShareSettings(
         result.putInt(KEY_LOG_LEVEL, logLevel)
         result.putInt(KEY_LOG_DESTINATION, logDestination)
         result.putInt(KEY_SHARED_COPY_LOCATION, sharedCopyLocation)
+        result.putInt(KEY_FROSTED_PLATE_ALPHA, frostedPlateAlphaPercent)
+        result.putInt(KEY_FROSTED_BLUR_RADIUS, frostedBlurRadiusDp)
+        result.putInt(KEY_FROSTED_DARKNESS, frostedDarknessPercent)
+        result.putString(KEY_TRANSLATE_APP_PACKAGE, translateAppPackage)
         return result
     }
 
@@ -767,7 +212,6 @@ internal class DragShareSettings(
     fun isAccessibilityCaptureMode(): Boolean =
         contentCaptureMode == CONTENT_CAPTURE_ACCESSIBILITY
 
-    fun isModernStyle(): Boolean = uiStyle == STYLE_MODERN
 
     fun isAccessibilityPackageBlacklisted(packageName: String?): Boolean =
         packageName != null && accessibilityBlacklistedPackages.contains(packageName)
@@ -826,70 +270,48 @@ internal class DragShareSettings(
         const val SHARED_COPY_LOCATION_MODULE = 1
         const val DEFAULT_SHARED_COPY_LOCATION = SHARED_COPY_LOCATION_MODULE
 
+        // 磨砂面板外观：默认对齐当前观感（55% 不透明 + 纯黑 + 28dp 模糊）。
+        const val MIN_FROSTED_PLATE_ALPHA_PERCENT = 0
+        const val DEFAULT_FROSTED_PLATE_ALPHA_PERCENT = 55
+        const val MAX_FROSTED_PLATE_ALPHA_PERCENT = 100
+
+        const val MIN_FROSTED_BLUR_RADIUS_DP = 0
+        const val DEFAULT_FROSTED_BLUR_RADIUS_DP = 28
+        const val MAX_FROSTED_BLUR_RADIUS_DP = 60
+
+        const val MIN_FROSTED_DARKNESS_PERCENT = 0
+        const val DEFAULT_FROSTED_DARKNESS_PERCENT = 40
+        const val MAX_FROSTED_DARKNESS_PERCENT = 100
+
+        /** 翻译应用：默认不指定（空串），保持"复制文字 + 提示"的原有行为。 */
+        const val DEFAULT_TRANSLATE_APP_PACKAGE = ""
+
         /** Change notification only; settings values remain behind the trusted Provider RPC. */
         private const val SETTINGS_URI_VALUE =
             "content://com.leaf.hyperdragshare.codex.share/settings"
 
         /** Compact overlay retained from the original implementation. */
-        const val STYLE_SIMPLE = 0
 
         /** Animated bottom-glow and spring tray modeled after Content Portal. */
-        const val STYLE_PORTAL = 1
 
         /** Left/right semicircle menu modeled after Oplus ROM circlemenuview. */
-        const val STYLE_CIRCLE = 2
 
         /** HyperOS View-blurred overlay with an adaptive square preview. */
-        const val STYLE_MODERN = 3
-        const val DEFAULT_UI_STYLE = STYLE_MODERN
 
         @Deprecated("Kept as a source-compatibility alias for pre-1.4 callers.")
-        const val STYLE_CARD = STYLE_PORTAL
 
-        const val MIN_EDGE_TRIGGER_DP = 24
-        const val DEFAULT_EDGE_TRIGGER_DP = 56
-        const val MAX_EDGE_TRIGGER_DP = 200
 
-        const val MIN_SCROLL_SPEED_DP_PER_SECOND = 120
-        const val DEFAULT_SCROLL_SPEED_DP_PER_SECOND = 560
-        const val MAX_SCROLL_SPEED_DP_PER_SECOND = 1200
 
-        const val SIMPLE_MENU_POSITION_TOP = 0
-        const val SIMPLE_MENU_POSITION_BOTTOM = 1
-        const val SIMPLE_MENU_POSITION_LEFT = 2
-        const val SIMPLE_MENU_POSITION_RIGHT = 3
-        const val SIMPLE_MENU_POSITION_NEAR_HAND = 4
-        const val DEFAULT_SIMPLE_MENU_POSITION = SIMPLE_MENU_POSITION_BOTTOM
 
-        const val MIN_SIMPLE_MENU_OPACITY_PERCENT = 20
-        const val DEFAULT_SIMPLE_MENU_OPACITY_PERCENT = 100
-        const val MAX_SIMPLE_MENU_OPACITY_PERCENT = 100
 
-        const val MIN_SIMPLE_MENU_CORNER_RADIUS_DP = 0
-        const val DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP = 8
-        const val MAX_SIMPLE_MENU_CORNER_RADIUS_DP = 32
 
-        const val MIN_SIMPLE_MENU_EDGE_DISTANCE_DP = 0
-        const val DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP = 8
-        const val MAX_SIMPLE_MENU_EDGE_DISTANCE_DP = 64
 
-        const val MIN_ICON_OPACITY_PERCENT = 0
-        const val DEFAULT_ICON_OPACITY_PERCENT = 100
-        const val MAX_ICON_OPACITY_PERCENT = 100
 
-        const val MIN_MODERN_BLUR_RADIUS_DP = 0
-        const val DEFAULT_MODERN_BLUR_RADIUS_DP = 60
-        const val MAX_MODERN_BLUR_RADIUS_DP = 150
 
-        const val MIN_MODERN_GLASS_OPACITY_PERCENT = 0
-        const val DEFAULT_MODERN_GLASS_OPACITY_PERCENT = 36
-        const val MAX_MODERN_GLASS_OPACITY_PERCENT = 90
 
-        const val DEFAULT_BLOCK_BACKGROUND_SCROLL = false
         const val DEFAULT_TEXT_SHARING_ENABLED = true
         const val DEFAULT_IMAGE_SHARING_ENABLED = true
         const val DEFAULT_PRELOAD_TEXT_SEGMENTER = true
-        const val DEFAULT_CLOSE_MENU_WHEN_POINTER_LEAVES = true
         const val DEFAULT_ACCESSIBILITY_LANDSCAPE_RECOGNITION_ENABLED = false
         const val MIN_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS = 250
 
@@ -920,23 +342,11 @@ internal class DragShareSettings(
         private const val PREFS_NAME = "drag_share_settings"
         private const val KEY_COLOR_MODE = "color_mode"
         private const val KEY_CONTENT_CAPTURE_MODE = "content_capture_mode"
-        private const val KEY_UI_STYLE = "ui_style"
-        private const val KEY_EDGE_TRIGGER_DP = "edge_trigger_dp"
-        private const val KEY_SCROLL_SPEED = "scroll_speed_dp_per_second"
-        private const val KEY_BLOCK_BACKGROUND_SCROLL = "block_background_scroll"
         private const val KEY_TEXT_SHARING_ENABLED = "text_sharing_enabled"
         private const val KEY_IMAGE_SHARING_ENABLED = "image_sharing_enabled"
         private const val KEY_TEXT_COPY_ENABLED = "text_copy_enabled"
         private const val KEY_IMAGE_COPY_ENABLED = "image_copy_enabled"
         private const val KEY_PRELOAD_TEXT_SEGMENTER = "preload_text_segmenter"
-        private const val KEY_SIMPLE_MENU_POSITION = "simple_menu_position"
-        private const val KEY_SIMPLE_MENU_OPACITY = "simple_menu_opacity_percent"
-        private const val KEY_SIMPLE_MENU_CORNER_RADIUS = "simple_menu_corner_radius_dp"
-        private const val KEY_SIMPLE_MENU_EDGE_DISTANCE = "simple_menu_edge_distance_dp"
-        private const val KEY_ICON_OPACITY = "icon_opacity_percent"
-        private const val KEY_MODERN_BLUR_RADIUS = "modern_blur_radius_dp"
-        private const val KEY_MODERN_GLASS_OPACITY = "modern_glass_opacity_percent"
-        private const val KEY_CLOSE_MENU_WHEN_POINTER_LEAVES = "close_menu_when_pointer_leaves"
         private const val KEY_HIDDEN_TARGETS = "hidden_targets"
         private const val KEY_TARGET_ORDER = "target_order"
         private const val KEY_ACCESSIBILITY_LANDSCAPE_RECOGNITION_ENABLED =
@@ -950,25 +360,31 @@ internal class DragShareSettings(
         private const val KEY_LOG_LEVEL = "log_level"
         private const val KEY_LOG_DESTINATION = "log_destination"
         private const val KEY_SHARED_COPY_LOCATION = "shared_copy_location"
+        private const val KEY_FROSTED_PLATE_ALPHA = "frosted_plate_alpha_percent"
+        private const val KEY_FROSTED_BLUR_RADIUS = "frosted_blur_radius_dp"
+        private const val KEY_FROSTED_DARKNESS = "frosted_darkness_percent"
+        private const val KEY_TRANSLATE_APP_PACKAGE = "translate_app_package"
 
 
         fun defaults(): DragShareSettings = DragShareSettings(
             COLOR_LIGHT,
-            DEFAULT_UI_STYLE,
-            DEFAULT_EDGE_TRIGGER_DP,
-            DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            DEFAULT_BLOCK_BACKGROUND_SCROLL,
             DEFAULT_TEXT_SHARING_ENABLED,
             DEFAULT_IMAGE_SHARING_ENABLED,
-            DEFAULT_SIMPLE_MENU_POSITION,
-            DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            DEFAULT_ICON_OPACITY_PERCENT,
-            DEFAULT_CLOSE_MENU_WHEN_POINTER_LEAVES,
             emptySet(),
             emptyList(),
             DEFAULT_CONTENT_CAPTURE_MODE,
+            DEFAULT_ACCESSIBILITY_LANDSCAPE_RECOGNITION_ENABLED,
+            emptySet(),
+            DEFAULT_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
+            DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
+            DEFAULT_PRELOAD_TEXT_SEGMENTER,
+            DEFAULT_LOG_LEVEL,
+            DEFAULT_LOG_DESTINATION,
+            DEFAULT_SHARED_COPY_LOCATION,
+            DEFAULT_FROSTED_PLATE_ALPHA_PERCENT,
+            DEFAULT_FROSTED_BLUR_RADIUS_DP,
+            DEFAULT_FROSTED_DARKNESS_PERCENT,
+            DEFAULT_TRANSLATE_APP_PACKAGE,
         )
 
         fun readLocal(context: Context?): DragShareSettings {
@@ -986,16 +402,6 @@ internal class DragShareSettings(
             )
             return DragShareSettings(
                 preferences.getInt(KEY_COLOR_MODE, COLOR_LIGHT),
-                preferences.getInt(KEY_UI_STYLE, DEFAULT_UI_STYLE),
-                preferences.getInt(KEY_EDGE_TRIGGER_DP, DEFAULT_EDGE_TRIGGER_DP),
-                preferences.getInt(
-                    KEY_SCROLL_SPEED,
-                    DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-                ),
-                preferences.getBoolean(
-                    KEY_BLOCK_BACKGROUND_SCROLL,
-                    DEFAULT_BLOCK_BACKGROUND_SCROLL,
-                ),
                 preferences.getBoolean(
                     KEY_TEXT_SHARING_ENABLED,
                     DEFAULT_TEXT_SHARING_ENABLED,
@@ -1003,30 +409,6 @@ internal class DragShareSettings(
                 preferences.getBoolean(
                     KEY_IMAGE_SHARING_ENABLED,
                     DEFAULT_IMAGE_SHARING_ENABLED,
-                ),
-                preferences.getInt(
-                    KEY_SIMPLE_MENU_POSITION,
-                    DEFAULT_SIMPLE_MENU_POSITION,
-                ),
-                preferences.getInt(
-                    KEY_SIMPLE_MENU_OPACITY,
-                    DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-                ),
-                preferences.getInt(
-                    KEY_SIMPLE_MENU_CORNER_RADIUS,
-                    DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-                ),
-                preferences.getInt(
-                    KEY_SIMPLE_MENU_EDGE_DISTANCE,
-                    DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-                ),
-                preferences.getInt(
-                    KEY_ICON_OPACITY,
-                    DEFAULT_ICON_OPACITY_PERCENT,
-                ),
-                preferences.getBoolean(
-                    KEY_CLOSE_MENU_WHEN_POINTER_LEAVES,
-                    DEFAULT_CLOSE_MENU_WHEN_POINTER_LEAVES,
                 ),
                 hiddenTargetKeys,
                 parseKeys(preferences.getString(KEY_TARGET_ORDER, "")),
@@ -1054,20 +436,28 @@ internal class DragShareSettings(
                     KEY_PRELOAD_TEXT_SEGMENTER,
                     DEFAULT_PRELOAD_TEXT_SEGMENTER,
                 ),
-                preferences.getInt(
-                    KEY_MODERN_BLUR_RADIUS,
-                    DEFAULT_MODERN_BLUR_RADIUS_DP,
-                ),
-                preferences.getInt(
-                    KEY_MODERN_GLASS_OPACITY,
-                    DEFAULT_MODERN_GLASS_OPACITY_PERCENT,
-                ),
                 preferences.getInt(KEY_LOG_LEVEL, DEFAULT_LOG_LEVEL),
                 preferences.getInt(KEY_LOG_DESTINATION, DEFAULT_LOG_DESTINATION),
                 preferences.getInt(
                     KEY_SHARED_COPY_LOCATION,
                     DEFAULT_SHARED_COPY_LOCATION,
                 ),
+                preferences.getInt(
+                    KEY_FROSTED_PLATE_ALPHA,
+                    DEFAULT_FROSTED_PLATE_ALPHA_PERCENT,
+                ),
+                preferences.getInt(
+                    KEY_FROSTED_BLUR_RADIUS,
+                    DEFAULT_FROSTED_BLUR_RADIUS_DP,
+                ),
+                preferences.getInt(
+                    KEY_FROSTED_DARKNESS,
+                    DEFAULT_FROSTED_DARKNESS_PERCENT,
+                ),
+                preferences.getString(
+                    KEY_TRANSLATE_APP_PACKAGE,
+                    DEFAULT_TRANSLATE_APP_PACKAGE,
+                ) ?: DEFAULT_TRANSLATE_APP_PACKAGE,
             )
         }
 
@@ -1104,16 +494,6 @@ internal class DragShareSettings(
             )
             return DragShareSettings(
                 bundle.getInt(KEY_COLOR_MODE, COLOR_LIGHT),
-                bundle.getInt(KEY_UI_STYLE, DEFAULT_UI_STYLE),
-                bundle.getInt(KEY_EDGE_TRIGGER_DP, DEFAULT_EDGE_TRIGGER_DP),
-                bundle.getInt(
-                    KEY_SCROLL_SPEED,
-                    DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-                ),
-                bundle.getBoolean(
-                    KEY_BLOCK_BACKGROUND_SCROLL,
-                    DEFAULT_BLOCK_BACKGROUND_SCROLL,
-                ),
                 bundle.getBoolean(
                     KEY_TEXT_SHARING_ENABLED,
                     DEFAULT_TEXT_SHARING_ENABLED,
@@ -1121,30 +501,6 @@ internal class DragShareSettings(
                 bundle.getBoolean(
                     KEY_IMAGE_SHARING_ENABLED,
                     DEFAULT_IMAGE_SHARING_ENABLED,
-                ),
-                bundle.getInt(
-                    KEY_SIMPLE_MENU_POSITION,
-                    DEFAULT_SIMPLE_MENU_POSITION,
-                ),
-                bundle.getInt(
-                    KEY_SIMPLE_MENU_OPACITY,
-                    DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-                ),
-                bundle.getInt(
-                    KEY_SIMPLE_MENU_CORNER_RADIUS,
-                    DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-                ),
-                bundle.getInt(
-                    KEY_SIMPLE_MENU_EDGE_DISTANCE,
-                    DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-                ),
-                bundle.getInt(
-                    KEY_ICON_OPACITY,
-                    DEFAULT_ICON_OPACITY_PERCENT,
-                ),
-                bundle.getBoolean(
-                    KEY_CLOSE_MENU_WHEN_POINTER_LEAVES,
-                    DEFAULT_CLOSE_MENU_WHEN_POINTER_LEAVES,
                 ),
                 hiddenTargetKeys,
                 if (orderValues == null) emptyList() else orderValues,
@@ -1173,20 +529,28 @@ internal class DragShareSettings(
                     KEY_PRELOAD_TEXT_SEGMENTER,
                     DEFAULT_PRELOAD_TEXT_SEGMENTER,
                 ),
-                bundle.getInt(
-                    KEY_MODERN_BLUR_RADIUS,
-                    DEFAULT_MODERN_BLUR_RADIUS_DP,
-                ),
-                bundle.getInt(
-                    KEY_MODERN_GLASS_OPACITY,
-                    DEFAULT_MODERN_GLASS_OPACITY_PERCENT,
-                ),
                 bundle.getInt(KEY_LOG_LEVEL, DEFAULT_LOG_LEVEL),
                 bundle.getInt(KEY_LOG_DESTINATION, DEFAULT_LOG_DESTINATION),
                 bundle.getInt(
                     KEY_SHARED_COPY_LOCATION,
                     DEFAULT_SHARED_COPY_LOCATION,
                 ),
+                bundle.getInt(
+                    KEY_FROSTED_PLATE_ALPHA,
+                    DEFAULT_FROSTED_PLATE_ALPHA_PERCENT,
+                ),
+                bundle.getInt(
+                    KEY_FROSTED_BLUR_RADIUS,
+                    DEFAULT_FROSTED_BLUR_RADIUS_DP,
+                ),
+                bundle.getInt(
+                    KEY_FROSTED_DARKNESS,
+                    DEFAULT_FROSTED_DARKNESS_PERCENT,
+                ),
+                bundle.getString(
+                    KEY_TRANSLATE_APP_PACKAGE,
+                    DEFAULT_TRANSLATE_APP_PACKAGE,
+                ) ?: DEFAULT_TRANSLATE_APP_PACKAGE,
             )
         }
 
@@ -1280,14 +644,6 @@ internal class DragShareSettings(
         private fun clamp(value: Int, minimum: Int, maximum: Int): Int =
             Math.max(minimum, Math.min(maximum, value))
 
-        private fun normalizeSimpleMenuPosition(position: Int): Int =
-            if (position >= SIMPLE_MENU_POSITION_TOP &&
-                position <= SIMPLE_MENU_POSITION_NEAR_HAND
-            ) {
-                position
-            } else {
-                DEFAULT_SIMPLE_MENU_POSITION
-            }
 
         private fun normalizeContentCaptureMode(mode: Int): Int =
             if (mode == CONTENT_CAPTURE_ACCESSIBILITY) {

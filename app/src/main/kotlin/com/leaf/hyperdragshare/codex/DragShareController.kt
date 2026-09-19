@@ -1,9 +1,11 @@
 package com.leaf.hyperdragshare.codex
 
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Insets
@@ -46,79 +48,9 @@ internal class DragShareController(
 ) {
     private val windowManager: WindowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val backgroundTouchBlocker: BackgroundTouchBlocker = BackgroundTouchBlocker(context)
     private val windowPolicy: OverlayWindowPolicy = policy ?: OverlayWindowPolicy.portal()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val dragShareToast: DragShareToast = DragShareToast(context, windowPolicy)
-    private val edgeScrollRunnable: Runnable = object : Runnable {
-        override fun run() {
-            if (!active || !menuShown) {
-                return
-            }
-            if (isCircleStyle()) {
-                val circle = circleMenuView
-                if (circle == null || circleScrollDirection == 0) {
-                    return
-                }
-                circle.scrollWindow(circleScrollDirection)
-                updateSelectedTarget(lastX, lastY)
-                mainHandler.postDelayed(this, circleScrollIntervalMs())
-                return
-            }
-            val modernMenu = modernMenuView
-            val horizontalScroll = menuScroll
-            if (edgeDirection == 0 || (horizontalScroll == null &&
-                    menuVerticalScroll == null &&
-                    modernMenu == null)
-            ) {
-                return
-            }
-            val now = SystemClock.uptimeMillis()
-            val elapsed = if (lastEdgeScrollUptime == 0L) {
-                16L
-            } else {
-                Math.min(48L, Math.max(1L, now - lastEdgeScrollUptime))
-            }
-            lastEdgeScrollUptime = now
-            val distanceWithRemainder = dpFloat(settings.scrollSpeedDpPerSecond.toFloat()) *
-                edgeScrollSpeedMultiplier() * elapsed / 1000f +
-                edgeScrollRemainderPx
-            val distance = distanceWithRemainder.toInt()
-            edgeScrollRemainderPx = distanceWithRemainder - distance
-            if (distance > 0) {
-                if (modernMenu != null) {
-                    modernMenu.scrollByPixels(edgeDirection * distance)
-                } else if (horizontalScroll != null) {
-                    horizontalScroll.scrollBy(edgeDirection * distance, 0)
-                } else {
-                    menuVerticalScroll?.scrollBy(0, edgeDirection * distance)
-                }
-                updateSelectedTarget(lastX, lastY)
-            }
-            mainHandler.postDelayed(this, 16L)
-        }
-    }
-    private val circleExpandRunnable: Runnable = object : Runnable {
-        override fun run() {
-            if (!active || menuShown || circleMenuView == null ||
-                circlePendingEdge == CircleMenuGeometry.EDGE_NONE
-            ) {
-                return
-            }
-            val edge = CircleMenuGeometry.nearestEdge(
-                lastX,
-                lastY,
-                screenWidth,
-                screenHeight,
-                circleTriggerPx().toFloat(),
-            )
-            if (edge == circlePendingEdge) {
-                circleEdge = edge
-                showMenuOnMain()
-            }
-        }
-    }
-
     private val pendingLaunchTimeout: Runnable = Runnable {
         val stalled = session
         if (stalled != null && stalled.pendingTarget != null) {
@@ -155,103 +87,22 @@ internal class DragShareController(
     // the pending share launches, so a 1x1 transparent window is parked in their place.
     private var pendingLaunchAnchor: View? = null
     private var duplicateStartLogged = false
-    private var backgroundBlockAttempted = false
-    private var portalGlowStartedLogged = false
-    private var portalGlowExpandedLogged = false
-    private var lastEdgeScrollUptime = 0L
-    private var edgeScrollRemainderPx = 0f
-    private var circleEdge = CircleMenuGeometry.EDGE_NONE
-    private var circlePendingEdge = CircleMenuGeometry.EDGE_NONE
-    private var circleScrollDirection = 0
     private var screenWidth = 0
     private var screenHeight = 0
     private var topInset = 0
     private var bottomInset = 0
-    private var menuTop = 0
-    private var menuHeight = 0
-    private var menuTriggerTop = 0
-    private var menuLeft = 0
-    private var menuWidth = 0
-    private var simpleMenuPosition = DragShareSettings.SIMPLE_MENU_POSITION_BOTTOM
-    private var configuredSimpleMenuPosition = DragShareSettings.SIMPLE_MENU_POSITION_BOTTOM
-    private var nearHandSide = DragShareSettings.SIMPLE_MENU_POSITION_RIGHT
-    private var nearHandSideLocked = false
+    private var progressRingView: ProgressRingView? = null
+    private var frostedMenuView: FrostedMenuOverlayView? = null
+    private var frostedMenuWindow: FrostedMenuWindow? = null
+    private var ringFilled = false
 
-    private var previewView: View? = null
-    private var modernPreviewView: ModernPreviewOverlayView? = null
-    private var modernPreviewWindow: ModernOverlayWindow? = null
-    private var previewParams: WindowManager.LayoutParams? = null
-    private var previewWidth = 0
-    private var previewHeight = 0
-    private var modernPreviewEnterStarted = false
-    // Keep an exiting preview addressable until its animation completes so a new drag can
-    // tear it down immediately instead of briefly stacking two overlay windows.
-    private var previewExitGeneration = 0
-    private var exitingPreviewView: View? = null
-    private var exitingModernPreviewView: ModernPreviewOverlayView? = null
-    private var exitingModernPreviewWindow: ModernOverlayWindow? = null
-
-    private var glowView: PortalGlowView? = null
-    private var glowParams: WindowManager.LayoutParams? = null
-
-    private var menuView: View? = null
-    private var modernMenuView: ModernMenuOverlayView? = null
-    private var modernMenuWindow: ModernOverlayWindow? = null
-    private var modernMenuDisposeRunnable: Runnable? = null
-    private var linearMenuFadeGeneration = 0
-    private var fadingLinearMenuView: View? = null
-    private var menuParams: WindowManager.LayoutParams? = null
-    private var menuScroll: HorizontalScrollView? = null
-    private var menuVerticalScroll: ScrollView? = null
-    private var menuRow: LinearLayout? = null
-    private val menuItems: MutableList<View> = ArrayList()
-    private var circleMenuView: CircleMenuOverlayView? = null
-    private var circleMenuParams: WindowManager.LayoutParams? = null
+    /** 环已填满、正在等待用户点按（此时抬手已收尾，环的 outside 只做静默清理）。 */
+    private var ringAwaitingTap = false
+    private var ringFillStartUptime = 0L
+    private val ringFillRunnable = Runnable { runRingFillTick() }
     private var shareTargets: List<ShareTarget> = ArrayList()
-    private var selectedTarget: ShareTarget? = null
-    private var menuShown = false
-    private var triggerButtonView: View? = null
-    private var triggerButtonArmed = false
-    private val triggerButtonTimeout = Runnable { dismissButtonModeOnMain() }
-    private var sensorManager: SensorManager? = null
-    private var nearHandSensor: Sensor? = null
-    private var nearHandSensorRegistered = false
-    private val nearHandSensorListener: SensorEventListener = object : SensorEventListener {
-        override fun onSensorChanged(event: SensorEvent?) {
-            if (nearHandSideLocked || event == null ||
-                event.values == null || event.values.size == 0
-            ) {
-                return
-            }
-            val tilt = if (event.sensor != null &&
-                event.sensor.type == Sensor.TYPE_ROTATION_VECTOR
-            ) {
-                rotationVectorRoll(event.values)
-            } else {
-                event.values[0] / SensorManager.GRAVITY_EARTH
-            }
-            if (!tilt.isFinite() || Math.abs(tilt) < NEAR_HAND_TILT_THRESHOLD) {
-                return
-            }
-            val side = if (GestureMath.nearHandMenuOnRight(tilt)) {
-                DragShareSettings.SIMPLE_MENU_POSITION_RIGHT
-            } else {
-                DragShareSettings.SIMPLE_MENU_POSITION_LEFT
-            }
-            if (side != nearHandSide) {
-                nearHandSide = side
-                mainHandler.post { updateNearHandMenuPosition() }
-            }
-        }
-
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-            // No calibration state is needed for the coarse left/right decision.
-        }
-    }
-
     private var session: Session? = null
     private var settings: DragShareSettings = DragShareSettings.defaults()
-    private var palette: OverlayColors = OverlayColors.light()
 
     constructor(context: Context) : this(context, OverlayWindowPolicy.portal())
 
@@ -323,22 +174,11 @@ internal class DragShareController(
     }
     /** Called by a root-backed source after it has created an active drag session. */
     fun onRootDragSessionStarted() {
-        runOnMain {
-            if (active) {
-                startBackgroundBlockerIfEnabled()
-            }
-        }
+        // 原先在这里启动"阻止背景滑动"的输入拦截；该功能已按需求整体移除。
     }
 
     fun finishFromControlEvent() {
-        mainHandler.post {
-            if (!active) {
-                return@post
-            }
-            handlePointerOnMain(lastObservedX, lastObservedY)
-            // The fallback path does not have a physical root ACTION_UP callback.
-            finishGestureOnMain(true)
-        }
+        // 只剩磨砂一种样式，没有"拖拽落点分享"：宿主自己的结束信号只当旁听，不驱动收尾。
     }
 
     fun onHostTaskCancelled() {
@@ -348,10 +188,7 @@ internal class DragShareController(
                 if (active) {
                     cancelGestureOnMain()
                 } else {
-                    backgroundTouchBlocker.stop()
-                    if (!isPreviewExitPending()) {
-                        removeGestureViews()
-                    }
+                    removeGestureViews()
                 }
             },
             32L,
@@ -364,8 +201,6 @@ internal class DragShareController(
         runOnMain {
             active = false
             session?.cancelled = true
-            stopEdgeScroll()
-            backgroundTouchBlocker.stop()
             discardPendingLaunch()
             removeGestureViews()
             dragShareToast.close()
@@ -379,35 +214,39 @@ internal class DragShareController(
     ) {
         if (destroyed) {
             pendingPortalHostFloatWindowSuppression = false
+            log("showOnMain skipped: destroyed")
             return
         }
+        log("showOnMain enter kind=" + payload.kind + " active=" + active)
         if (active) {
-            pendingPortalHostFloatWindowSuppression = false
-            if (!duplicateStartLogged) {
-                duplicateStartLogged = true
-                log("duplicate Taplus start ignored during active drag")
+            // 自愈：磨砂模式下若环和菜单都已不在，却仍 active，说明上一轮收了没收尾干净，
+            // 直接把状态复位继续，而不是把这次长按吞掉。
+            if (FROSTED_RING_MENU && frostedMenuWindow == null && frostedMenuView == null &&
+                progressRingView == null
+            ) {
+                log("stale frosted state reset on new gesture")
+                active = false
+            } else {
+                pendingPortalHostFloatWindowSuppression = false
+                log(
+                    "showOnMain skipped: active with live views" +
+                        " menu=" + (frostedMenuView != null) +
+                        " ring=" + (progressRingView != null),
+                )
+                if (!duplicateStartLogged) {
+                    duplicateStartLogged = true
+                    log("duplicate Taplus start ignored during active drag")
+                }
+                return
             }
-            return
         }
         active = false
         inputSourceLogged = false
         gestureSource = null
         duplicateStartLogged = false
-        backgroundBlockAttempted = false
-        portalGlowStartedLogged = false
-        portalGlowExpandedLogged = false
-        simpleMenuStartPointCaptured = false
-        simpleMenuActivationQualified = false
         lastHandledEventTime = Long.MIN_VALUE
         lastHandledAction = -1
         settings = loadedSettings ?: DragShareSettings.defaults()
-        configuredSimpleMenuPosition = settings.simpleMenuPosition
-        nearHandSide = DragShareSettings.SIMPLE_MENU_POSITION_RIGHT
-        nearHandSideLocked = false
-        simpleMenuPosition = effectiveSimpleMenuPosition()
-        palette = OverlayColors.from(settings)
-        stopEdgeScroll()
-        backgroundTouchBlocker.stop()
         discardPendingLaunch()
         removeGestureViews()
 
@@ -419,127 +258,17 @@ internal class DragShareController(
         try {
             session = Session(payload)
             refreshDisplayGeometry()
-            createPreview(payload)
-            createGlow()
-            val glow = glowView
-            val glowLayout = glowParams
-            if (glow != null && glowLayout != null) {
-                windowManager.addView(glow, glowLayout)
-                glow.start()
-            }
-            val previewWindow = modernPreviewWindow
-            if (previewWindow != null) {
-                previewWindow.show()
-            } else {
-                windowManager.addView(previewView, previewParams)
-            }
-            if (TRIGGER_BUTTON_MODE) {
-                showTriggerButtonOnMain(requestedInitialX, requestedInitialY)
-            }
-            active = true
+            // 只有一种样式：长按 → 环形填充 → 点环弹出磨砂菜单。
             pendingPortalHostFloatWindowSuppression = false
-            registerNearHandSensorIfNeeded()
-            traceAccessibility("overlay added kind=" + payload.kind)
+            startFrostedModeOnMain(payload, requestedInitialX, requestedInitialY)
         } catch (error: Throwable) {
             pendingPortalHostFloatWindowSuppression = false
-            log("unable to add preview overlay", error)
+            log("unable to start frosted mode", error)
             traceAccessibility(
                 "overlay add failed=" + error.javaClass.simpleName +
                     ":" + error.message.toString(),
             )
             removeGestureViews()
-            return
-        }
-
-        val hasRequestedInitialPoint = requestedInitialX.isFinite() &&
-            requestedInitialX >= 0f &&
-            requestedInitialY.isFinite() &&
-            requestedInitialY >= 0f
-        val initialX = if (requestedInitialX.isFinite() && requestedInitialX >= 0f) {
-            requestedInitialX
-        } else {
-            screenWidth / 2f
-        }
-        val initialY = if (requestedInitialY.isFinite() && requestedInitialY >= 0f) {
-            requestedInitialY
-        } else {
-            Math.max((topInset + dp(80)).toFloat(), screenHeight * 0.32f)
-        }
-        lastX = initialX
-        lastY = initialY
-        simpleMenuStartX = initialX
-        simpleMenuStartY = initialY
-        simpleMenuStartPointCaptured = hasRequestedInitialPoint
-        updatePreviewPosition(initialX, initialY)
-        updatePortalPullEffect(initialX, initialY)
-        startPreviewEnterAnimation()
-        // Querying package icons can be comparatively slow. The preview is
-        // already visible before the bottom menu is assembled.
-        shareTargets = safeQueryTargets(payload)
-        createMenu()
-        val circle = circleMenuView
-        val circleParams = circleMenuParams
-        if (isCircleStyle() && circle != null && circleParams != null) {
-            try {
-                circle.visibility = View.VISIBLE
-                windowManager.addView(circle, circleParams)
-                updateCirclePointer(initialX, initialY)
-            } catch (error: Throwable) {
-                log("unable to add circle menu overlay", error)
-                circle.collapse()
-                circleMenuView = null
-                circleMenuParams = null
-            }
-        }
-        log(
-            "preview shown kind=" + payload.kind +
-                " targets=" + shareTargets.size +
-                " style=" + settings.uiStyle +
-                " blockBackground=" + settings.blockBackgroundScroll +
-                " chars=" + (payload.text?.length ?: 0) +
-                " image=" + describeBitmap(payload),
-        )
-
-        if (payload.isImage()) {
-            val stagedSession = session
-            ImageStagingClient.stage(
-                context,
-                payload.bitmap,
-                object : ImageStagingClient.Callback {
-                    override fun onStaged(staged: Uri?) {
-                        mainHandler.post {
-                            if (destroyed || stagedSession == null || stagedSession.cancelled) {
-                                return@post
-                            }
-                            stagedSession.stagedUri = staged
-                            stagedSession.stagedAtUptime = SystemClock.uptimeMillis()
-                            log(
-                                "image ready afterMs=" +
-                                    (
-                                        stagedSession.stagedAtUptime -
-                                            stagedSession.startedAtUptime
-                                        ),
-                            )
-                            if (stagedSession.pendingTarget != null) {
-                                launchPendingShare(stagedSession)
-                            }
-                        }
-                    }
-
-                    override fun onFailure(error: Throwable?) {
-                        mainHandler.post {
-                            if (!destroyed && stagedSession != null && !stagedSession.cancelled) {
-                                log("image staging failed", error)
-                                if (stagedSession.pendingTarget != null) {
-                                    stagedSession.pendingTarget = null
-                                    discardPendingLaunch()
-                                    showToast("图片准备失败")
-                                }
-                            }
-                        }
-                    }
-                },
-            )
         }
     }
 
@@ -558,454 +287,6 @@ internal class DragShareController(
         }
     }
 
-    private fun createPreview(payload: CapturedContent) {
-        if (isModernStyle()) {
-            val side = ModernPreviewSizer.squareSidePx(
-                payload,
-                screenWidth,
-                context.resources.displayMetrics.density,
-            )
-            previewWidth = side
-            previewHeight = side
-            val modernPreview = ModernPreviewOverlayView(context, payload, settings)
-            modernPreviewView = modernPreview
-            previewView = modernPreview
-            val params = overlayParams(previewWidth, previewHeight, "DragShare modern preview")
-            previewParams = params
-            try {
-                modernPreviewWindow = ModernOverlayWindow(
-                    context,
-                    windowManager,
-                    modernPreview,
-                    params,
-                    dp(settings.modernBlurRadiusDp),
-                )
-            } catch (error: Throwable) {
-                modernPreviewWindow = null
-                log("unable to create native modern preview window", error)
-            }
-            return
-        }
-        val portalStyle = isPortalStyle()
-        val circleStyle = isCircleStyle()
-        val compactStyle = portalStyle || circleStyle
-        val standardPreviewView = FrameLayout(context)
-        previewView = standardPreviewView
-        standardPreviewView.clipToOutline = true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            standardPreviewView.isForceDarkAllowed = false
-        }
-        standardPreviewView.elevation = dp(if (compactStyle) 6 else 8).toFloat()
-        standardPreviewView.background = roundDrawable(
-            palette.previewBackground,
-            if (compactStyle) 12 else 8,
-        )
-
-        if (compactStyle) {
-            val sizeDp = if (!payload.isImage()) {
-                PORTAL_PREVIEW_TEXT_SIZE_DP
-            } else {
-                PORTAL_PREVIEW_IMAGE_SIZE_DP
-            }
-            previewWidth = dp(sizeDp)
-            previewHeight = dp(sizeDp)
-            if (!payload.isImage()) {
-                val text = TextView(context)
-                var previewText: CharSequence? = payload.text
-                if (previewText != null && previewText.length > 40) {
-                    previewText = previewText.subSequence(0, 40)
-                }
-                text.text = previewText
-                text.setTextColor(palette.primaryText)
-                text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                text.gravity = Gravity.CENTER
-                text.setPadding(dp(7), dp(7), dp(7), dp(7))
-                text.maxLines = 4
-                text.ellipsize = android.text.TextUtils.TruncateAt.END
-                standardPreviewView.addView(
-                    text,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    ),
-                )
-            } else {
-                val image = ImageView(context)
-                image.setImageBitmap(payload.bitmap)
-                image.scaleType = ImageView.ScaleType.CENTER_CROP
-                image.setPadding(dp(3), dp(3), dp(3), dp(3))
-                standardPreviewView.addView(
-                    image,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    ),
-                )
-            }
-        } else if (!payload.isImage()) {
-            previewWidth = dp(PREVIEW_TEXT_WIDTH_DP)
-            previewHeight = dp(PREVIEW_TEXT_HEIGHT_DP)
-            val text = TextView(context)
-            text.text = payload.text
-            text.setTextColor(palette.primaryText)
-            text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            text.gravity = Gravity.CENTER_VERTICAL
-            text.setPadding(dp(12), dp(10), dp(12), dp(10))
-            text.maxLines = 4
-            text.ellipsize = android.text.TextUtils.TruncateAt.END
-            standardPreviewView.addView(
-                text,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                ),
-            )
-        } else {
-            previewWidth = dp(PREVIEW_IMAGE_SIZE_DP)
-            previewHeight = dp(PREVIEW_IMAGE_SIZE_DP)
-            val image = ImageView(context)
-            image.setImageBitmap(payload.bitmap)
-            image.scaleType = ImageView.ScaleType.FIT_CENTER
-            image.setPadding(dp(6), dp(6), dp(6), dp(6))
-            standardPreviewView.addView(
-                image,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                ),
-            )
-        }
-
-        previewParams = overlayParams(previewWidth, previewHeight, "DragShare preview")
-    }
-
-    private fun createGlow() {
-        if (!isPortalStyle()) {
-            glowView = null
-            glowParams = null
-            return
-        }
-        glowView = PortalGlowView(
-            context,
-            settings.colorMode == DragShareSettings.COLOR_DARK,
-            bottomInset,
-        )
-        glowParams = overlayParams(screenWidth, screenHeight, "DragShare portal glow")
-    }
-    private fun startPreviewEnterAnimation() {
-        if (isModernStyle()) {
-            enableModernLocalBlurAndReveal()
-            return
-        }
-        val preview = previewView
-        if (preview == null || !isPortalStyle()) {
-            return
-        }
-        preview.animate().cancel()
-        preview.alpha = 0f
-        preview.scaleX = 0.88f
-        preview.scaleY = 0.88f
-        preview.animate()
-            .alpha(0.94f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(200L)
-            .start()
-    }
-
-    private fun enableModernLocalBlurAndReveal() {
-        val preview = modernPreviewView ?: return
-        modernPreviewEnterStarted = false
-        val blurRadiusPx = dp(settings.modernBlurRadiusDp)
-        val previewWindow = modernPreviewWindow
-        val enabled = previewWindow != null && previewWindow.isNativeBackdropBlurEnabled()
-        log(
-            "modern Android background blur " + (if (enabled) "enabled" else "unavailable") +
-                " radiusPx=" + blurRadiusPx,
-        )
-        revealModernPreview(preview)
-    }
-
-    private fun revealModernPreview(preview: ModernPreviewOverlayView?) {
-        if (preview == null || modernPreviewEnterStarted) {
-            return
-        }
-        modernPreviewEnterStarted = true
-        val previewWindow = modernPreviewWindow
-        if (previewWindow != null) {
-            previewWindow.showAnimated()
-        } else {
-            preview.showAnimated()
-        }
-    }
-    private fun createMenu() {
-        if (isModernStyle()) {
-            val icons: MutableMap<ShareTarget, Drawable> = LinkedHashMap()
-            for (target in shareTargets) {
-                val icon = iconForTarget(target)
-                if (icon != null) {
-                    icons[target] = icon
-                }
-            }
-            val modernMenu = ModernMenuOverlayView(
-                context,
-                ArrayList(shareTargets),
-                icons,
-                settings,
-                isVerticalSimpleMenu(),
-            )
-            modernMenuView = modernMenu
-            menuView = modernMenu
-            val params = overlayParams(menuWidth, menuHeight, "DragShare modern targets")
-            params.x = menuLeft
-            params.y = menuTop
-            menuParams = params
-            try {
-                modernMenuWindow = ModernOverlayWindow(
-                    context,
-                    windowManager,
-                    modernMenu,
-                    params,
-                    dp(settings.modernBlurRadiusDp),
-                )
-            } catch (error: Throwable) {
-                modernMenuWindow = null
-                log("unable to create native modern menu window", error)
-            }
-            return
-        }
-        if (isCircleStyle()) {
-            val circle = CircleMenuOverlayView(
-                context,
-                screenWidth,
-                screenHeight,
-                topInset,
-                bottomInset,
-                settings.colorMode == DragShareSettings.COLOR_DARK,
-                palette.accent,
-                palette.primaryText,
-                palette.selectedItemBackground,
-                palette.selectedItemBorder,
-                settings.iconOpacityPercent,
-            )
-            circleMenuView = circle
-            circle.setTargets(shareTargets)
-            circleMenuParams = overlayParams(
-                screenWidth,
-                screenHeight,
-                "DragShare circle menu",
-            )
-            return
-        }
-        val portalStyle = isPortalStyle()
-        val vertical = !portalStyle && isVerticalSimpleMenu()
-        val linearMenuView = FrameLayout(context)
-        menuView = linearMenuView
-        linearMenuView.clipChildren = false
-        linearMenuView.clipToPadding = false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            linearMenuView.isForceDarkAllowed = false
-        }
-        val horizontalPadding = dp(if (portalStyle) 10 else 4)
-        val verticalPadding = dp(if (portalStyle) 4 else 4)
-        val bottomPadding = dp(if (portalStyle) 2 else 4)
-        if (portalStyle) {
-            linearMenuView.background = roundDrawable(Color.TRANSPARENT, 0)
-        } else {
-            addSimpleMenuBackground()
-        }
-        linearMenuView.elevation = dp(if (portalStyle) 0 else 10).toFloat()
-
-        val menuContent = FrameLayout(context)
-        menuContent.clipChildren = false
-        menuContent.clipToPadding = false
-        menuContent.setPadding(
-            horizontalPadding,
-            verticalPadding,
-            horizontalPadding,
-            bottomPadding,
-        )
-        linearMenuView.addView(
-            menuContent,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            ),
-        )
-
-        val row = LinearLayout(context)
-        menuRow = row
-        row.orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
-        row.gravity = if (vertical) Gravity.CENTER_HORIZONTAL else Gravity.CENTER_VERTICAL
-        row.clipChildren = false
-        row.clipToPadding = false
-        if (vertical) {
-            val verticalScroll = ScrollView(context)
-            menuVerticalScroll = verticalScroll
-            verticalScroll.isVerticalScrollBarEnabled = false
-            verticalScroll.overScrollMode = View.OVER_SCROLL_NEVER
-            verticalScroll.clipToPadding = false
-            verticalScroll.clipChildren = false
-            verticalScroll.addView(
-                row,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ),
-            )
-            menuContent.addView(
-                verticalScroll,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                ),
-            )
-        } else {
-            val horizontalScroll = HorizontalScrollView(context)
-            menuScroll = horizontalScroll
-            horizontalScroll.isHorizontalScrollBarEnabled = false
-            horizontalScroll.overScrollMode = View.OVER_SCROLL_NEVER
-            horizontalScroll.clipToPadding = false
-            horizontalScroll.clipChildren = false
-            horizontalScroll.isFillViewport = false
-            horizontalScroll.addView(
-                row,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                ),
-            )
-            menuContent.addView(
-                horizontalScroll,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                ),
-            )
-        }
-        menuItems.clear()
-        if (shareTargets.isEmpty()) {
-            val empty = TextView(context)
-            empty.text = "没有可用的分享应用"
-            empty.setTextColor(palette.secondaryText)
-            empty.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            empty.gravity = Gravity.CENTER
-            if (vertical) {
-                row.addView(
-                    empty,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ),
-                )
-            } else if (portalStyle) {
-                row.addView(
-                    empty,
-                    LinearLayout.LayoutParams(
-                        screenWidth,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    ),
-                )
-            } else {
-                menuContent.addView(
-                    empty,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    ),
-                )
-            }
-        } else {
-            val itemWidth = dp(if (portalStyle) 78 else 76)
-            val itemHeight = dp(if (portalStyle) 124 else 84)
-            val iconSize = dp(if (portalStyle) 50 else 44)
-            for (target in shareTargets) {
-                val item = LinearLayout(context)
-                item.orientation = LinearLayout.VERTICAL
-                item.gravity = Gravity.CENTER_HORIZONTAL
-                item.setPadding(
-                    dp(if (portalStyle) 5 else 4),
-                    dp(if (portalStyle) 8 else 3),
-                    dp(if (portalStyle) 5 else 4),
-                    dp(if (portalStyle) 2 else 3),
-                )
-                item.tag = target
-                item.background = itemBackground(target, false)
-
-                val icon = ImageView(context)
-                icon.setImageDrawable(iconForTarget(target))
-                icon.scaleType = ImageView.ScaleType.FIT_CENTER
-                icon.alpha = settings.iconOpacityPercent / 100f
-                item.addView(icon, LinearLayout.LayoutParams(iconSize, iconSize))
-
-                val label = TextView(context)
-                label.text = target.label
-                label.setTextColor(palette.primaryText)
-                label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                label.gravity = Gravity.CENTER
-                label.maxLines = 1
-                label.ellipsize = android.text.TextUtils.TruncateAt.END
-                label.alpha = settings.iconOpacityPercent / 100f
-                if (portalStyle) {
-                    label.setShadowLayer(
-                        dpFloat(2f),
-                        0f,
-                        dpFloat(1f),
-                        if (settings.colorMode == DragShareSettings.COLOR_DARK) {
-                            0xCC000000.toInt()
-                        } else {
-                            0x66000000
-                        },
-                    )
-                }
-                item.addView(
-                    label,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(if (portalStyle) 38 else 28),
-                    ),
-                )
-                if (vertical) {
-                    val width = Math.max(dp(72), menuWidth - dp(8))
-                    row.addView(item, LinearLayout.LayoutParams(width, itemHeight))
-                } else {
-                    row.addView(item, LinearLayout.LayoutParams(itemWidth, itemHeight))
-                }
-                menuItems.add(item)
-            }
-        }
-
-        val params = overlayParams(menuWidth, menuHeight, "DragShare targets")
-        params.x = menuLeft
-        params.y = menuTop
-        menuParams = params
-    }
-    private fun addSimpleMenuBackground() {
-        val linearMenuView = menuView as? FrameLayout ?: return
-        val cornerRadiusDp = settings.simpleMenuCornerRadiusDp
-        val background = View(context)
-        background.background = roundDrawable(
-            applyAbsoluteOpacity(palette.menuBackground, 100),
-            cornerRadiusDp,
-        )
-        background.alpha = simpleMenuBackgroundOpacityFraction(
-            settings.simpleMenuOpacityPercent,
-        )
-        linearMenuView.addView(
-            background,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            ),
-        )
-        val cornerRadiusPx = dp(cornerRadiusDp)
-        linearMenuView.outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, 0, view.width, view.height, cornerRadiusPx.toFloat())
-            }
-        }
-        linearMenuView.clipToOutline = true
-    }
 
     private fun handleMotionOnMain(
         action: Int,
@@ -1017,13 +298,6 @@ internal class DragShareController(
     ) {
         if (!active) {
             return
-        }
-        // Only pilfer once the authoritative root stream has produced an
-        // event. The MIUI fallback cannot safely consume its synthetic cancel.
-        if ("root" == source &&
-            (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE)
-        ) {
-            startBackgroundBlockerIfEnabled()
         }
         if (eventTime == lastHandledEventTime && action == lastHandledAction &&
             eventTime != 0L && eventTime > lastObservedEventTime - DUPLICATE_EVENT_WINDOW_MS
@@ -1040,673 +314,11 @@ internal class DragShareController(
             cancelGestureOnMain()
             return
         }
-        handlePointerOnMain(x, y)
         if (action == MotionEvent.ACTION_UP) {
-            log("gesture finished source=" + source + " menu=" + menuShown)
-            if (TRIGGER_BUTTON_MODE) {
-                armTriggerButtonOnMain(beforeFinish)
-            } else {
-                finishGestureOnMain(true, beforeFinish)
-            }
+            log("gesture finished source=" + source)
+            onFrostedGestureUp(beforeFinish)
         }
     }
-    private fun handlePointerOnMain(x: Float, y: Float) {
-        if (!active || !x.isFinite() || !y.isFinite()) {
-            return
-        }
-        // 按钮模式：按钮只在识别时摆放一次，手势期间不跟随、不展开菜单，
-        // 因此没有逐帧 updateViewLayout，也就没有跟手卡顿。
-        if (TRIGGER_BUTTON_MODE) {
-            return
-        }
-        lastX = x
-        lastY = y
-        updatePreviewPosition(x, y)
-        updatePortalPullEffect(x, y)
-        if (isCircleStyle()) {
-            updateCirclePointer(x, y)
-            if (menuShown) {
-                updateSelectedTarget(x, y)
-            }
-            return
-        }
-        var menuOpenedNow = false
-        if (!menuShown && shouldShowSimpleMenu(x, y) &&
-            hasQualifiedSimpleMenuActivation(x, y)
-        ) {
-            showMenuOnMain()
-            menuOpenedNow = menuShown
-        }
-        if (menuShown) {
-            if (settings.closeMenuWhenPointerLeaves &&
-                !menuOpenedNow &&
-                !isPointerWithinSimpleMenuZone(x, y)
-            ) {
-                hideLinearMenu()
-                return
-            }
-            updateSelectedTarget(x, y)
-            val pointerInScrollableMenu = isPortalStyle() ||
-                isPointerInsideSimpleMenu(x, y)
-            var nextDirection = 0
-            if (pointerInScrollableMenu) {
-                val edgeAxisSize = edgeScrollAxisSize()
-                val edgeWidth = edgeScrollWidthPx()
-                nextDirection = GestureMath.edgeScrollDirection(
-                    if (isVerticalSimpleMenu()) y else x,
-                    edgeAxisSize,
-                    edgeWidth,
-                )
-            }
-            if (nextDirection != edgeDirection) {
-                edgeDirection = nextDirection
-                edgeScrollRemainderPx = 0f
-                log("edge scroll direction=" + nextDirection)
-                if (nextDirection == 0) {
-                    stopEdgeScroll()
-                } else {
-                    lastEdgeScrollUptime = 0L
-                    mainHandler.removeCallbacks(edgeScrollRunnable)
-                    mainHandler.post(edgeScrollRunnable)
-                }
-            }
-        }
-    }
-    private fun updateCirclePointer(x: Float, y: Float) {
-        val circle = circleMenuView ?: return
-        val trigger = circleTriggerPx()
-        val nextEdge = CircleMenuGeometry.nearestEdge(
-            x, y, screenWidth, screenHeight, trigger.toFloat(),
-        )
-        val progress = CircleMenuGeometry.edgeProgress(
-            x, y, screenWidth, screenHeight,
-            Math.max(trigger, dp(CIRCLE_EDGE_SOFT_DISTANCE_DP)).toFloat(),
-        )
-        if (menuShown) {
-            circle.updatePointer(x, y)
-            if (settings.closeMenuWhenPointerLeaves &&
-                !circle.containsExpandedRegion(x, y)
-            ) {
-                hideCircleMenu()
-                circle.setEdgeProgress(nextEdge, progress, x, y)
-                updateCirclePendingEdge(nextEdge)
-                return
-            }
-        } else {
-            circle.setEdgeProgress(nextEdge, progress, x, y)
-            updateCirclePendingEdge(nextEdge)
-            return
-        }
-
-        val nextScrollDirection = circle.scrollDirectionForPointer(x, y)
-        if (nextScrollDirection != circleScrollDirection) {
-            circleScrollDirection = nextScrollDirection
-            mainHandler.removeCallbacks(edgeScrollRunnable)
-            if (nextScrollDirection != 0) {
-                mainHandler.post(edgeScrollRunnable)
-            }
-        }
-        // The reference side menu keeps the edge and vertical anchor captured
-        // at expansion time. Pointer movement only changes hover/drop state.
-    }
-
-    private fun updateCirclePendingEdge(nextEdge: Int) {
-        if (nextEdge == circlePendingEdge) {
-            return
-        }
-        mainHandler.removeCallbacks(circleExpandRunnable)
-        circlePendingEdge = nextEdge
-        if (nextEdge != CircleMenuGeometry.EDGE_NONE) {
-            mainHandler.postDelayed(circleExpandRunnable, CIRCLE_EDGE_OPEN_DELAY_MS)
-        }
-    }
-
-    private fun circleTriggerPx(): Int {
-        val maxTrigger = Math.max(1, Math.min(screenWidth, screenHeight) / 2)
-        return Math.min(
-            maxTrigger,
-            Math.max(dp(CIRCLE_EDGE_TRIGGER_DP), dp(settings.edgeTriggerDp)),
-        )
-    }
-    private fun effectiveSimpleMenuPosition(): Int {
-        if (configuredSimpleMenuPosition == DragShareSettings.SIMPLE_MENU_POSITION_NEAR_HAND) {
-            return if (nearHandSide == DragShareSettings.SIMPLE_MENU_POSITION_LEFT) {
-                DragShareSettings.SIMPLE_MENU_POSITION_LEFT
-            } else {
-                DragShareSettings.SIMPLE_MENU_POSITION_RIGHT
-            }
-        }
-        return if (configuredSimpleMenuPosition >= DragShareSettings.SIMPLE_MENU_POSITION_TOP &&
-            configuredSimpleMenuPosition <= DragShareSettings.SIMPLE_MENU_POSITION_RIGHT
-        ) {
-            configuredSimpleMenuPosition
-        } else {
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION
-        }
-    }
-
-    private fun isVerticalSimpleMenu(): Boolean =
-        !isPortalStyle() &&
-            (simpleMenuPosition == DragShareSettings.SIMPLE_MENU_POSITION_LEFT ||
-                simpleMenuPosition == DragShareSettings.SIMPLE_MENU_POSITION_RIGHT)
-
-    private fun edgeScrollAxisSize(): Int =
-        if (isVerticalSimpleMenu()) screenHeight else screenWidth
-
-    private fun edgeScrollWidthPx(): Int {
-        val edgeAxisSize = edgeScrollAxisSize()
-        val maxEdgeWidth = Math.max(1, (edgeAxisSize - 1) / 2)
-        return Math.min(dp(settings.edgeTriggerDp), maxEdgeWidth)
-    }
-
-    private fun edgeScrollSpeedMultiplier(): Float {
-        val vertical = isVerticalSimpleMenu()
-        return GestureMath.edgeScrollSpeedMultiplier(
-            if (vertical) lastY else lastX,
-            edgeScrollAxisSize(),
-            edgeScrollWidthPx(),
-            dp(EDGE_SCROLL_FULL_SPEED_INSET_DP),
-        )
-    }
-
-    private fun shouldShowSimpleMenu(x: Float, y: Float): Boolean {
-        if (isPortalStyle()) {
-            return GestureMath.shouldShowMenu(y, menuTriggerTop)
-        }
-        val trigger = Math.max(dp(settings.edgeTriggerDp), dp(MENU_TRIGGER_DP))
-        return when (simpleMenuPosition) {
-            DragShareSettings.SIMPLE_MENU_POSITION_TOP -> y <= menuTop + trigger
-            DragShareSettings.SIMPLE_MENU_POSITION_LEFT -> x <= trigger
-            DragShareSettings.SIMPLE_MENU_POSITION_RIGHT -> x >= screenWidth - trigger
-            // SIMPLE_MENU_POSITION_BOTTOM and every unknown position trigger from the bottom.
-            else -> y >= menuTriggerTop
-        }
-    }
-    private fun hasQualifiedSimpleMenuActivation(x: Float, y: Float): Boolean {
-        if (isPortalStyle() || isCircleStyle() || simpleMenuActivationQualified) {
-            return true
-        }
-        if (!simpleMenuStartPointCaptured) {
-            simpleMenuStartX = x
-            simpleMenuStartY = y
-            simpleMenuStartPointCaptured = true
-            return false
-        }
-        simpleMenuActivationQualified = GestureMath.hasMovedTowardMenu(
-            simpleMenuPosition,
-            simpleMenuStartX,
-            simpleMenuStartY,
-            x,
-            y,
-            dp(SIMPLE_MENU_ACTIVATION_SLOP_DP).toFloat(),
-        )
-        return simpleMenuActivationQualified
-    }
-
-    private fun isPointerInsideSimpleMenu(x: Float, y: Float): Boolean =
-        menuShown &&
-            x >= menuLeft &&
-            x < menuLeft + menuWidth &&
-            y >= menuTop &&
-            y < menuTop + menuHeight
-
-    private fun isPointerWithinSimpleMenuZone(x: Float, y: Float): Boolean =
-        isPointerInsideSimpleMenu(x, y) || shouldShowSimpleMenu(x, y)
-
-    private fun hideLinearMenu() {
-        if (!menuShown || isCircleStyle()) {
-            return
-        }
-        stopEdgeScroll()
-        menuShown = false
-        val modernMenu = modernMenuView
-        val currentMenuView = menuView
-        if (isModernStyle() && modernMenu != null) {
-            scheduleModernMenuDispose(modernMenu, modernMenuWindow)
-        } else if (currentMenuView != null) {
-            fadeOutLinearMenu(currentMenuView)
-        }
-        selectedTarget = null
-        modernMenuView?.setSelectedTarget(null)
-        val glow = glowView
-        if (glow != null && isPortalStyle()) {
-            glow.collapseMenu()
-            updatePortalPullEffect(lastX, lastY)
-        }
-        updatePreviewPosition(lastX, lastY)
-    }
-    private fun hideCircleMenu() {
-        val circle = circleMenuView
-        if (!menuShown || !isCircleStyle() || circle == null) {
-            return
-        }
-        stopEdgeScroll()
-        mainHandler.removeCallbacks(circleExpandRunnable)
-        circle.collapse()
-        menuShown = false
-        selectedTarget = null
-        circleEdge = CircleMenuGeometry.EDGE_NONE
-        circlePendingEdge = CircleMenuGeometry.EDGE_NONE
-        updatePreviewPosition(lastX, lastY)
-    }
-
-    private fun updateNearHandMenuPosition() {
-        if (!active || isPortalStyle() || isCircleStyle() ||
-            nearHandSideLocked ||
-            configuredSimpleMenuPosition != DragShareSettings.SIMPLE_MENU_POSITION_NEAR_HAND
-        ) {
-            return
-        }
-        val nextPosition = effectiveSimpleMenuPosition()
-        if (nextPosition == simpleMenuPosition) {
-            return
-        }
-        val wasShown = menuShown
-        val previousMenuView = menuView
-        if (wasShown) {
-            hideLinearMenu()
-            if (!isModernStyle()) {
-                cancelLinearMenuFadeOut()
-                removeLinearMenuImmediately(previousMenuView)
-            }
-        }
-        if (!wasShown && modernMenuWindow != null) {
-            modernMenuWindow?.dispose()
-        }
-        menuView = null
-        modernMenuView = null
-        modernMenuWindow = null
-        menuParams = null
-        menuScroll = null
-        menuVerticalScroll = null
-        menuRow = null
-        simpleMenuPosition = nextPosition
-        refreshDisplayGeometry()
-        createMenu()
-        if (wasShown) {
-            showMenuOnMain()
-        }
-        updatePreviewPosition(lastX, lastY)
-    }
-    private fun registerNearHandSensorIfNeeded() {
-        if (!active || isPortalStyle() || isCircleStyle() ||
-            configuredSimpleMenuPosition != DragShareSettings.SIMPLE_MENU_POSITION_NEAR_HAND ||
-            nearHandSensorRegistered
-        ) {
-            return
-        }
-        try {
-            val manager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager?
-            sensorManager = manager
-            if (manager == null) {
-                return
-            }
-            var sensor = manager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-            if (sensor == null) {
-                sensor = manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            }
-            nearHandSensor = sensor
-            if (sensor != null &&
-                manager.registerListener(
-                    nearHandSensorListener,
-                    sensor,
-                    SensorManager.SENSOR_DELAY_GAME,
-                )
-            ) {
-                nearHandSensorRegistered = true
-                log("near-hand sensor registered type=" + sensor.type)
-            }
-        } catch (error: Throwable) {
-            log("near-hand sensor unavailable", error)
-            nearHandSensorRegistered = false
-        }
-    }
-
-    private fun unregisterNearHandSensor() {
-        val manager = sensorManager
-        if (manager != null && nearHandSensorRegistered) {
-            try {
-                manager.unregisterListener(nearHandSensorListener)
-            } catch (ignored: Throwable) {
-                // Sensor service may already be shutting down.
-            }
-        }
-        nearHandSensorRegistered = false
-        nearHandSensor = null
-        sensorManager = null
-    }
-    private fun circleScrollIntervalMs(): Long {
-        val speed = Math.max(1f, settings.scrollSpeedDpPerSecond.toFloat())
-        return Math.max(120L, Math.min(420L, Math.round(300f * 560f / speed).toLong()))
-    }
-
-    private fun showMenuOnMain() {
-        if (menuShown) {
-            return
-        }
-        if (isCircleStyle()) {
-            val circle = circleMenuView
-            if (circle == null || circlePendingEdge == CircleMenuGeometry.EDGE_NONE) {
-                return
-            }
-            menuShown = true
-            circleEdge = circlePendingEdge
-            circleScrollDirection = 0
-            circle.expand(circleEdge, lastX, lastY)
-            updatePreviewPosition(lastX, lastY)
-            startCirclePreviewAnimation()
-            log(
-                "circle menu shown edge=" + circleEdge +
-                    " pointer=" + Math.round(lastX) + "," + Math.round(lastY),
-            )
-            mainHandler.post { updateSelectedTarget(lastX, lastY) }
-            return
-        }
-        if (isModernStyle()) {
-            cancelModernMenuDispose()
-            // A menu that completed its exit animation is removed to guarantee that the
-            // blurred overlay cannot remain on screen. Recreate it when the same drag re-enters
-            // the trigger zone, preserving the public "leave and return" behavior.
-            if (menuView == null || modernMenuView == null) {
-                createMenu()
-            }
-        }
-        val currentMenu = menuView ?: return
-        lockNearHandMenuSide()
-        if (!isModernStyle() && currentMenu.isAttachedToWindow) {
-            cancelLinearMenuFadeOut(currentMenu)
-            currentMenu.animate().cancel()
-            menuShown = true
-            currentMenu.animate()
-                .alpha(1f)
-                .translationX(0f)
-                .translationY(0f)
-                .setDuration(LINEAR_MENU_EXIT_DURATION_MS)
-                .setInterpolator(DecelerateInterpolator(1.5f))
-                .start()
-            updatePreviewPosition(lastX, lastY)
-            log(
-                "linear menu restored pointerY=" + Math.round(lastY) +
-                    " menuTop=" + menuTop,
-            )
-            currentMenu.post { updateSelectedTarget(lastX, lastY) }
-            return
-        }
-        val modernMenu = modernMenuView
-        val modernWindow = modernMenuWindow
-        if (isModernStyle() && modernMenu != null &&
-            ((modernWindow != null && modernWindow.isShowing()) || currentMenu.isAttachedToWindow)
-        ) {
-            menuShown = true
-            if (modernWindow != null) {
-                modernWindow.showAnimated()
-            } else {
-                modernMenu.showAnimated()
-            }
-            updatePreviewPosition(lastX, lastY)
-            log("modern menu shown pointerY=" + Math.round(lastY) + " menuTop=" + menuTop)
-            currentMenu.post { updateSelectedTarget(lastX, lastY) }
-            return
-        }
-        try {
-            if (isModernStyle() && modernWindow != null) {
-                modernWindow.showAnimated()
-            } else {
-                windowManager.addView(currentMenu, menuParams)
-            }
-            menuShown = true
-            updatePreviewPosition(lastX, lastY)
-            log("menu shown pointerY=" + Math.round(lastY) + " menuTop=" + menuTop)
-            if (isPortalStyle()) {
-                val glow = glowView
-                if (glow != null) {
-                    glow.setPullProgress(1f, lastX / Math.max(1f, screenWidth.toFloat()))
-                    glow.expandMenu()
-                }
-                if (!portalGlowExpandedLogged) {
-                    portalGlowExpandedLogged = true
-                    log("portal glow expanded with share tray")
-                }
-                startPortalMenuEnterAnimation()
-            } else if (isModernStyle() && modernMenu != null) {
-                if (modernWindow == null) {
-                    modernMenu.showAnimated()
-                }
-            } else {
-                currentMenu.alpha = 0f
-                currentMenu.translationX = if (isVerticalSimpleMenu()) {
-                    if (simpleMenuPosition == DragShareSettings.SIMPLE_MENU_POSITION_LEFT) {
-                        -dp(12).toFloat()
-                    } else {
-                        dp(12).toFloat()
-                    }
-                } else {
-                    0f
-                }
-                currentMenu.translationY = if (!isVerticalSimpleMenu()) {
-                    if (simpleMenuPosition == DragShareSettings.SIMPLE_MENU_POSITION_TOP) {
-                        -dp(12).toFloat()
-                    } else {
-                        dp(12).toFloat()
-                    }
-                } else {
-                    0f
-                }
-                currentMenu.animate()
-                    .alpha(1f)
-                    .translationX(0f)
-                    .translationY(0f)
-                    .setDuration(120L)
-                    .start()
-            }
-            currentMenu.post { updateSelectedTarget(lastX, lastY) }
-        } catch (error: Throwable) {
-            log("unable to add share menu", error)
-        }
-    }
-
-    private fun lockNearHandMenuSide() {
-        if (configuredSimpleMenuPosition != DragShareSettings.SIMPLE_MENU_POSITION_NEAR_HAND ||
-            nearHandSideLocked
-        ) {
-            return
-        }
-        nearHandSideLocked = true
-        unregisterNearHandSensor()
-        log("near-hand menu side locked=" + simpleMenuPosition)
-    }
-
-    private fun startPortalMenuEnterAnimation() {
-        val menu = menuView ?: return
-        menu.alpha = 1f
-        menu.translationY = 0f
-        val springLike = OvershootInterpolator(0.78f)
-        for (index in menuItems.indices) {
-            val item = menuItems[index]
-            item.animate().cancel()
-            item.alpha = 0f
-            item.translationY = dp(PORTAL_ITEM_ENTER_OFFSET_DP).toFloat()
-            item.animate()
-                .alpha(1f)
-                .translationY(0f)
-                .setStartDelay(Math.min(180L, index * 22L))
-                .setDuration(430L)
-                .setInterpolator(springLike)
-                .start()
-        }
-    }
-
-    private fun startCirclePreviewAnimation() {
-        val preview = previewView ?: return
-        preview.animate().cancel()
-        preview.animate()
-            .alpha(0.92f)
-            .scaleX(0.88f)
-            .scaleY(0.88f)
-            .setDuration(500L)
-            .start()
-    }
-    private fun updateSelectedTarget(x: Float, y: Float) {
-        if (isCircleStyle()) {
-            val circle = circleMenuView
-            val hit = circle?.hitTest(x, y)
-            selectedTarget = hit
-            circle?.setSelectedTarget(hit)
-            return
-        }
-        if (isModernStyle()) {
-            val modern = modernMenuView
-            val hit = if (menuShown && isPointerInsideSimpleMenu(x, y) && modern != null) {
-                modern.hitTest(x, y)
-            } else {
-                null
-            }
-            selectedTarget = hit
-            modern?.setSelectedTarget(hit)
-            return
-        }
-        var hit: ShareTarget? = null
-        if (menuShown && isPointerInsideSimpleMenu(x, y)) {
-            for (i in menuItems.indices) {
-                val item = menuItems[i]
-                val location = IntArray(2)
-                item.getLocationOnScreen(location)
-                val inside: Boolean
-                if (isPortalStyle() && item.width > 0 && item.height > 0) {
-                    val centerX = location[0] + item.width / 2f
-                    val centerY = location[1] + item.height / 2f
-                    val scale = GestureMath.portalItemScale(x, centerX, item.width.toFloat())
-                    inside = Math.abs(x - centerX) <= item.width * scale / 2f &&
-                        Math.abs(y - centerY) <= item.height * scale / 2f
-                } else {
-                    inside = x >= location[0] && x < location[0] + item.width &&
-                        y >= location[1] && y < location[1] + item.height
-                }
-                if (inside) {
-                    val tag = item.tag
-                    if (tag is ShareTarget) {
-                        hit = tag
-                    }
-                    break
-                }
-            }
-        }
-        val selectionChanged = hit !== selectedTarget
-        selectedTarget = hit
-        if (isPortalStyle()) {
-            val pointerInMenu = menuShown && isPointerInsideSimpleMenu(x, y)
-            for (item in menuItems) {
-                val location = IntArray(2)
-                item.getLocationOnScreen(location)
-                val scale = if (pointerInMenu && item.width > 0) {
-                    GestureMath.portalItemScale(
-                        x,
-                        location[0] + item.width / 2f,
-                        item.width.toFloat(),
-                    )
-                } else {
-                    1f
-                }
-                item.scaleX = scale
-                item.scaleY = scale
-                if (selectionChanged) {
-                    item.background = itemBackground(
-                        item.tag as? ShareTarget,
-                        item.tag === selectedTarget,
-                    )
-                }
-            }
-            return
-        }
-        if (!selectionChanged) {
-            return
-        }
-        for (item in menuItems) {
-            val selected = item.tag === selectedTarget
-            item.background = itemBackground(item.tag as? ShareTarget, selected)
-            item.animate().scaleX(if (selected) 1.04f else 1f)
-                .scaleY(if (selected) 1.04f else 1f).setDuration(80L).start()
-        }
-    }
-
-    private fun finishGestureOnMain(allowShare: Boolean) {
-        finishGestureOnMain(allowShare, null)
-    }
-
-    private fun finishGestureOnMain(allowShare: Boolean, afterDeactivate: Runnable?) {
-        if (!active) {
-            return
-        }
-        val finished = session
-        var target = selectedTarget
-        if (allowShare && menuShown) {
-            updateSelectedTarget(lastX, lastY)
-            target = selectedTarget
-        }
-
-        if (settings.blockBackgroundScroll && !backgroundBlockAttempted) {
-            log("background scroll lock skipped because root input was not active")
-        }
-        active = false
-        stopEdgeScroll()
-        backgroundTouchBlocker.stop()
-        afterDeactivate?.run()
-
-        logGestureEnd(finished, target, allowShare)
-        // HyperOS can silently reject an AccessibilityService activity start after its last
-        // accessibility overlay has been removed. Keep the passive overlay attached through
-        // the user-selected launch, then clean it up in the same main-thread turn.
-        if (allowShare && target != null && finished != null) {
-            if (!finished.payload.isImage() ||
-                target.isSaveToLocal() ||
-                finished.stagedUri != null
-            ) {
-                launchShare(finished, target)
-            } else {
-                finished.pendingTarget = target
-                // The staged PNG is not ready yet, so the launch has to outlive these windows.
-                keepOverlayForPendingLaunch()
-                showToast("正在准备图片")
-            }
-        } else if (finished != null && finished.pendingTarget == null) {
-            finished.cancelled = true
-        }
-        removeGestureViews(true)
-    }
-
-    private fun logGestureEnd(
-        finished: Session?,
-        target: ShareTarget?,
-        allowShare: Boolean,
-    ) {
-        if (finished == null) {
-            return
-        }
-        val staged = if (!finished.payload.isImage()) {
-            "n/a"
-        } else if (finished.stagedUri == null) {
-            "pending"
-        } else {
-            "ready"
-        }
-        log(
-            "gesture summary source=" + gestureSource +
-                " kind=" + finished.payload.kind +
-                " events=" + finished.pointerEvents +
-                " durationMs=" + (SystemClock.uptimeMillis() - finished.startedAtUptime) +
-                " menu=" + menuShown +
-                " image=" + staged +
-                " target=" + (
-                    if (!allowShare) "cancelled" else target?.component?.flattenToShortString()
-                    ),
-        )
-    }
-
-    private fun describeBitmap(payload: CapturedContent): String {
-        val bitmap = payload.bitmap ?: return "none"
-        return bitmap.width.toString() + "x" + bitmap.height
-    }
-
     private fun keepOverlayForPendingLaunch() {
         discardPendingLaunch()
         try {
@@ -1737,8 +349,8 @@ internal class DragShareController(
             return
         }
         active = false
-        stopEdgeScroll()
-        backgroundTouchBlocker.stop()
+        // 手势被系统取消同样"本次拖拽已结束"，补一次宿主延迟调用重放，避免队列残留。
+        PortalHooks.flushDeferredHostCalls()
         removeGestureViews(true)
         val current = session
         if (current != null && current.pendingTarget == null) {
@@ -1755,139 +367,237 @@ internal class DragShareController(
     // 接收窗口，所以按钮必须等抬手后才能接管触摸，这正好也省掉了逐帧布局。
     // ---------------------------------------------------------------------
 
-    private fun showTriggerButtonOnMain(x: Float, y: Float) {
-        removeTriggerButtonOnMain()
-        val size = dp(TRIGGER_BUTTON_SIZE_DP)
-        val button = TextView(context)
-        button.text = TRIGGER_BUTTON_LABEL
-        button.gravity = Gravity.CENTER
-        button.setTextColor(Color.WHITE)
-        button.textSize = 13f
-        val background = GradientDrawable()
-        background.shape = GradientDrawable.OVAL
-        background.setColor(Color.parseColor("#E63F7FFF"))
-        button.background = background
-        val params = overlayParams(size, size, "drag-share-trigger")
+    private fun startFrostedModeOnMain(payload: CapturedContent, x: Float, y: Float) {
+        // 先清掉可能残留的上一轮环/菜单（如切任务中心后未收到 ACTION_OUTSIDE 的旧菜单），
+        // 否则旧菜单会挡住新会话，表现为"长按有时出不来"。
+        removeFrostedViews()
+        val hasPoint = x.isFinite() && x >= 0f && y.isFinite() && y >= 0f
+        val initialX = if (hasPoint) x else screenWidth / 2f
+        val initialY = if (hasPoint) {
+            y
+        } else {
+            Math.max((topInset + dp(80)).toFloat(), screenHeight * 0.32f)
+        }
+        lastX = initialX
+        lastY = initialY
+        active = true
+        ringFilled = false
+        shareTargets = safeQueryTargets(payload)
+        createProgressRing(initialX, initialY)
+        if (payload.isImage()) {
+            val stagedSession = session
+            ImageStagingClient.stage(
+                context,
+                payload.bitmap,
+                object : ImageStagingClient.Callback {
+                    override fun onStaged(staged: Uri?) {
+                        mainHandler.post {
+                            if (destroyed || stagedSession == null || stagedSession.cancelled) {
+                                return@post
+                            }
+                            stagedSession.stagedUri = staged
+                            if (stagedSession.pendingTarget != null) {
+                                launchPendingShare(stagedSession)
+                            }
+                        }
+                    }
+
+                    override fun onFailure(error: Throwable?) {
+                        mainHandler.post {
+                            if (!destroyed && stagedSession != null && !stagedSession.cancelled) {
+                                log("frosted image staging failed", error)
+                            }
+                        }
+                    }
+                },
+            )
+        }
+        ringFillStartUptime = SystemClock.uptimeMillis()
+        mainHandler.post(ringFillRunnable)
+        log("frosted ring mode started targets=" + shareTargets.size)
+    }
+
+    private fun createProgressRing(x: Float, y: Float) {
+        val size = dp(RING_SIZE_DP)
+        val ring = ProgressRingView(context)
+        ring.setProgress(0f)
+        val params = overlayParams(size, size, "DragShare frosted ring")
+        // 环从创建起就"可点"：填满后由用户点它才弹菜单（点环外则取消）。
+        // 触摸流在 ACTION_DOWN 就绑定原窗口，所以这个窗口即使一开始就可触摸，
+        // 也不会抢走用户这次长按的事件。
+        params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
         params.x = Math.round(x - size / 2f).coerceIn(0, Math.max(0, screenWidth - size))
-        params.y = Math.round(y - size - dp(12)).coerceIn(0, Math.max(0, screenHeight - size))
+        // 环整体放在按压点上方，避免被手指遮住；中心比手指高 (size/2 + 24dp)。
+        params.y = Math.round(y - size - dp(24)).coerceIn(0, Math.max(0, screenHeight - size))
+        ring.setOnClickListener { onRingTappedOnMain() }
+        ring.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) {
+                if (ringAwaitingTap) {
+                    // 抬手时手势已收尾（宿主调用已重放）：这里只做静默清理。
+                    // 若走 dismissFrostedOnMain 会 flushDeferredHostCalls，
+                    // 把下一次长按刚挂起的宿主调用提前重放，导致后续长按全部失灵。
+                    log("ring ACTION_OUTSIDE -> quiet cleanup (awaiting tap)")
+                    ringAwaitingTap = false
+                    removeGestureViews()
+                } else {
+                    // 点环以外 = 取消
+                    log("ring ACTION_OUTSIDE -> cancel")
+                    dismissFrostedOnMain()
+                }
+                true
+            } else {
+                false
+            }
+        }
         try {
-            windowManager.addView(button, params)
-            triggerButtonView = button
-            log("trigger button shown")
+            windowManager.addView(ring, params)
+            progressRingView = ring
         } catch (error: Throwable) {
-            triggerButtonView = null
-            log("unable to add trigger button", error)
+            progressRingView = null
+            log("unable to add frosted ring", error)
         }
     }
 
-    private fun removeTriggerButtonOnMain() {
-        mainHandler.removeCallbacks(triggerButtonTimeout)
-        val button = triggerButtonView ?: return
-        triggerButtonView = null
-        triggerButtonArmed = false
-        try {
-            windowManager.removeViewImmediate(button)
-        } catch (ignored: Throwable) {
-            // Already removed or never attached.
-        }
-    }
-
-    private fun armTriggerButtonOnMain(afterDeactivate: Runnable?) {
-        if (!active) {
+    private fun runRingFillTick() {
+        if (!active || ringFilled) {
             return
         }
+        val elapsed = SystemClock.uptimeMillis() - ringFillStartUptime
+        val p = (elapsed.toFloat() / RING_FILL_MS).coerceIn(0f, 1f)
+        progressRingView?.setProgress(p)
+        if (p >= 1f) {
+            ringFilled = true
+            onRingFull()
+        } else {
+            mainHandler.postDelayed(ringFillRunnable, RING_FILL_TICK_MS)
+        }
+    }
+
+    /**
+     * 环填满：**不自动弹菜单**，环留在原位等用户点它（见 [onRingTappedOnMain]）。
+     * 不做超时：只有点环（出菜单）或点环以外（取消）才会消失。
+     */
+    private fun onRingFull() {
+        ringAwaitingTap = true
+        log("frosted ring filled; waiting for tap")
+    }
+
+    /** 用户点了已填满的环 → 收起环并弹出菜单。 */
+    private fun onRingTappedOnMain() {
+        if (!ringFilled) {
+            log("ring tapped before filled; ignored")
+            return
+        }
+        log("frosted ring tapped -> show menu")
+        ringAwaitingTap = false
+        removeProgressRing()
+        showFrostedMenuOnMain()
+    }
+
+    private fun removeProgressRing() {
+        val ring = progressRingView
+        if (ring != null) {
+            try {
+                windowManager.removeViewImmediate(ring)
+            } catch (ignored: Throwable) {
+                // Already removed.
+            }
+            progressRingView = null
+        }
+    }
+
+    private fun showFrostedMenuOnMain() {
+        if (frostedMenuView != null) {
+            // 残留旧菜单：先拆掉再建新的（注意 ringFilled 会被清，需恢复，
+            // 否则抬手会被当成"未填满取消"）。
+            removeFrostedViews()
+            ringFilled = true
+        }
+        val payload = session?.payload ?: return
+        val view = FrostedMenuOverlayView(
+            context,
+            shareTargets,
+            { iconForTarget(it) },
+            { handleFrostedFunction(it) },
+            { launchFrostedTarget(it) },
+            settings.frostedPlateAlphaPercent,
+            settings.frostedDarknessPercent,
+        )
+        frostedMenuView = view
+        val sideMargin = dp(RING_MENU_SIDE_MARGIN_DP)
+        val menuW = (screenWidth - 2 * sideMargin).coerceAtLeast(1)
+        val menuH = dp(RING_MENU_HEIGHT_DP).coerceAtLeast(1)
+        val params = overlayParams(menuW, menuH, "DragShare frosted menu")
+        params.x = sideMargin
+        params.y = Math.max(topInset, ((screenHeight - menuH) / 2f).toInt())
+        // 本地模糊窗口：Dialog + window.setBackgroundBlurRadius，只糊背板范围、四周不压暗。
+        // （不用 FLAG_BLUR_BEHIND —— 它会糊窗口下方全部内容，HyperOS 上表现为整屏模糊。）
+        try {
+            val window = FrostedMenuWindow(
+                context,
+                windowManager,
+                view,
+                params,
+                dp(settings.frostedBlurRadiusDp),
+            ) { dismissFrostedOnMain() }
+            frostedMenuWindow = window
+            window.show()
+            log("frosted menu shown targets=" + shareTargets.size)
+        } catch (error: Throwable) {
+            log("unable to show frosted menu", error)
+            frostedMenuView = null
+            frostedMenuWindow = null
+        }
+    }
+
+    private fun onFrostedGestureUp(afterDeactivate: Runnable?) {
+        // 抬手即"本次拖拽结束"：重放被压制的宿主调用（cancelOffset 等），让宿主把流水线跑完。
         active = false
-        stopEdgeScroll()
-        backgroundTouchBlocker.stop()
+        log(
+            "frosted gesture up ringFilled=" + ringFilled +
+                " replay=" + (afterDeactivate != null),
+        )
         afterDeactivate?.run()
-        logGestureEnd(session, null, false)
-        val button = triggerButtonView
-        if (button == null) {
+        if (!ringFilled) {
+            // 没填满就松手 = 取消
+            val cur = session
+            if (cur != null && cur.pendingTarget == null) {
+                cur.cancelled = true
+            }
             removeGestureViews(true)
             return
         }
-        val params = button.layoutParams as? WindowManager.LayoutParams
-        if (params != null) {
-            params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-            try {
-                windowManager.updateViewLayout(button, params)
-            } catch (error: Throwable) {
-                log("unable to arm trigger button", error)
-            }
-        }
-        triggerButtonArmed = true
-        button.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_UP -> {
-                    onTriggerButtonClicked()
-                    true
-                }
-                MotionEvent.ACTION_OUTSIDE -> {
-                    dismissButtonModeOnMain()
-                    true
-                }
-                else -> true
-            }
-        }
-        mainHandler.postDelayed(triggerButtonTimeout, TRIGGER_BUTTON_TIMEOUT_MS)
-        log("trigger button armed")
+        // 已填满：环留在原处等用户点它（点环才出菜单，见 onRingTappedOnMain）。
+        log("frosted ring ready; waiting for user tap")
     }
 
-    private fun onTriggerButtonClicked() {
-        if (!triggerButtonArmed) {
-            return
+    private fun dismissFrostedOnMain() {
+        // 关键：彻底结束磨砂手势态。面板/环是被"点外部/超时"收起的，此前不会经过抬手分支，
+        // 若不在这里复位 active，showOnMain 的 `if (active) return` 会把之后所有长按都吞掉。
+        log("dismissFrostedOnMain (outside/timeout)")
+        val wasActive = active
+        active = false
+        ringAwaitingTap = false
+        mainHandler.removeCallbacks(ringFillRunnable)
+        // 兜底：仅当手势仍在进行（宿主延迟调用还没重放）时才补重放；
+        // 否则会把下一次长按刚挂起的宿主调用提前重放，导致其失灵。
+        if (wasActive) {
+            PortalHooks.flushDeferredHostCalls()
         }
-        triggerButtonArmed = false
-        mainHandler.removeCallbacks(triggerButtonTimeout)
-        removeTriggerButtonOnMain()
-        log("trigger button clicked")
-        showMenuOnMain()
-        makeMenuTouchableOnMain()
+        val cur = session
+        if (cur != null && cur.pendingTarget == null) {
+            cur.cancelled = true
+        }
+        removeGestureViews(true)
     }
 
-    private fun makeMenuTouchableOnMain() {
-        val menu = menuView
-        if (menu == null) {
-            dismissButtonModeOnMain()
-            return
-        }
-        val params = menu.layoutParams as? WindowManager.LayoutParams
-        if (params != null) {
-            params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-            try {
-                windowManager.updateViewLayout(menu, params)
-            } catch (error: Throwable) {
-                log("unable to make menu touchable", error)
-            }
-        }
-        menu.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_UP -> {
-                    updateSelectedTarget(event.rawX, event.rawY)
-                    launchFromButtonOnMain()
-                    true
-                }
-                MotionEvent.ACTION_OUTSIDE -> {
-                    dismissButtonModeOnMain()
-                    true
-                }
-                else -> true
-            }
-        }
-        mainHandler.postDelayed(triggerButtonTimeout, TRIGGER_BUTTON_TIMEOUT_MS)
-    }
-
-    private fun launchFromButtonOnMain() {
+    private fun launchFrostedTarget(target: ShareTarget) {
         val finished = session
-        val target = selectedTarget
-        if (finished == null || target == null) {
-            dismissButtonModeOnMain()
+        if (finished == null) {
+            removeGestureViews(true)
             return
         }
         if (!finished.payload.isImage() || target.isSaveToLocal() || finished.stagedUri != null) {
@@ -1900,16 +610,306 @@ internal class DragShareController(
         removeGestureViews(true)
     }
 
-    private fun dismissButtonModeOnMain() {
-        triggerButtonArmed = false
-        removeTriggerButtonOnMain()
-        if (!active) {
-            val current = session
-            if (current != null && current.pendingTarget == null) {
-                current.cancelled = true
+    private fun handleFrostedFunction(fn: FrostedFunction) {
+        val finished = session
+        val payload = finished?.payload
+        when (fn) {
+            FrostedFunction.COPY -> copyToClipboard(payload, finished?.let { publishSharedCopy(it) })
+            FrostedFunction.SAVE -> {
+                if (payload?.isImage() == true) {
+                    saveImageLocally(payload.bitmap)
+                } else {
+                    copyToClipboard(payload, finished?.let { publishSharedCopy(it) })
+                    showToast("已保存到剪贴板")
+                }
             }
-            removeGestureViews(true)
+            FrostedFunction.SEGMENT -> openTextSegmentation(payload?.text)
+            FrostedFunction.SHARE -> openSystemShare(payload)
+            FrostedFunction.TRANSLATE -> {
+                val app = settings.translateAppPackage
+                val text = payload?.text
+                val usable = !app.isNullOrEmpty() && !text.isNullOrEmpty()
+                if (usable) {
+                    // 保底：先把文字放进剪贴板。部分翻译应用（如小爱翻译）不消费外部传入的文字，
+                    // 打开后长按输入框即可粘贴。
+                    copyToClipboard(payload, finished?.let { publishSharedCopy(it) })
+                }
+                if (usable && launchTranslateApp(app.orEmpty(), text.orEmpty())) {
+                    showToast("已打开翻译应用，文字已复制，长按输入框可粘贴")
+                } else {
+                    showToast(
+                        if (usable) {
+                            "已复制文字，可自行打开翻译应用粘贴"
+                        } else {
+                            "已复制文字（可在设置里指定翻译应用）"
+                        },
+                    )
+                }
+            }
         }
+        if (finished != null && finished.pendingTarget == null) {
+            finished.cancelled = true
+        }
+        removeGestureViews(true)
+    }
+
+    /**
+     * 把选中的文字交给指定翻译应用。依次尝试：分享文本 → 文本处理(PROCESS_TEXT) → 系统翻译，
+     * 都不行就退到"复制后启动它的主界面"。成功返回 true。
+     */
+    private fun launchTranslateApp(packageName: String, text: String): Boolean {
+        logTranslateAppEntryPoints(packageName)
+        // 后台把该应用在系统里真实注册的入口写进日志（dumpsys，非阻塞）。
+        TranslateAppDiagnostics.logEntryPoints(packageName)
+        // 0) 本进程内已经试成功过的组合，直接用（避免重复试探造成闪屏）。
+        val cached = cachedTranslateRecipe
+        if (cached != null && cached.first == packageName) {
+            if (startTranslateIntent(
+                    intent = translateIntent(cached.second, text),
+                    packageName = packageName,
+                    component = ComponentName(packageName, cached.third),
+                    action = cached.second,
+                )
+            ) {
+                return true
+            }
+            cachedTranslateRecipe = null
+        }
+        // 1) 常规隐式启动（只用包名过滤）。
+        for ((action, _) in TRANSLATE_PAYLOADS) {
+            val intent = applyTranslateExtras(Intent(action).setType("text/plain"), text)
+            if (startTranslateIntent(intent, packageName, null, action)) {
+                return true
+            }
+        }
+        // 2) 显式启动：把这包里所有导出的 Activity 按"翻译相关"优先排序，逐个试。
+        //    MIUI 的入口（如 IntentAiTranslateServiceActivity / WordsTransActivity）不注册标准 action，
+        //    只能靠显式 ComponentName 拉起；显式启动不校验 intent-filter，只看 exported。
+        for ((index, activity) in translateCandidateActivities(packageName).withIndex()) {
+            val component = ComponentName(packageName, activity)
+            for ((action, _) in TRANSLATE_PAYLOADS) {
+                val intent = applyTranslateExtras(Intent(action).setType("text/plain"), text)
+                if (startTranslateIntent(intent, packageName, component, action)) {
+                    rememberTranslateRecipe(packageName, activity, action)
+                    return true
+                }
+            }
+            // 最可能的入口再猜几个 MIUI 风格 action（标准 action 之外的私有约定）。
+            if (index == 0) {
+                for (action in TRANSLATE_EXTRA_ACTIONS) {
+                    val intent = applyTranslateExtras(Intent(action).setType("text/plain"), text)
+                    if (startTranslateIntent(intent, packageName, component, action)) {
+                        rememberTranslateRecipe(packageName, activity, action)
+                        return true
+                    }
+                }
+            }
+            // 少数入口只吃"裸数据"，不认 action 也不需要 type。
+            val bare = applyTranslateExtras(Intent(Intent.ACTION_VIEW).setType("text/plain"), text)
+            if (startTranslateIntent(bare, packageName, component, "VIEW")) {
+                rememberTranslateRecipe(packageName, activity, "VIEW")
+                return true
+            }
+        }
+        // 3) 启动器入口 / 主界面（文字已在剪贴板）。
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        if (startTranslateIntent(launcherIntent, packageName, null, "LAUNCHER")) {
+            return true
+        }
+        try {
+            val launch = context.packageManager.getLaunchIntentForPackage(packageName)
+                ?: throw IllegalStateException("no launcher entry")
+            if (startTranslateIntent(launch, packageName, null, "LAUNCHER_EXPLICIT")) {
+                return true
+            }
+        } catch (error: Throwable) {
+            log("unable to open translate app package=" + packageName, error)
+        }
+        // 4) 最后兜底：交给系统自己弹"文本处理"选择器（不指定包名），
+        //    MIUI 的翻译/问小爱入口通常就在这里，由系统去拉起它，不需要我们跨应用启动。
+        val chooser = applyTranslateExtras(Intent(Intent.ACTION_PROCESS_TEXT).setType("text/plain"), text)
+        if (startTranslateIntent(chooser, null, null, "PROCESS_TEXT_CHOOSER")) {
+            log("translate fell back to system text-processing chooser")
+            return true
+        }
+        return false
+    }
+
+    private fun translateIntent(action: String, text: String): Intent =
+        applyTranslateExtras(Intent(action).setType("text/plain"), text)
+
+    /** 把文字塞进所有常见 extra key（见 [TRANSLATE_EXTRA_KEYS]）。 */
+    private fun applyTranslateExtras(intent: Intent, text: String): Intent {
+        TRANSLATE_EXTRA_KEYS.forEach { key ->
+            intent.putExtra(key, text)
+        }
+        return intent
+    }
+
+    private fun rememberTranslateRecipe(packageName: String, activity: String, action: String) {
+        cachedTranslateRecipe = Triple(packageName, action, activity)
+        log("translate recipe learned component=" + activity + " action=" + action)
+    }
+
+    private fun startTranslateIntent(
+        intent: Intent,
+        packageName: String?,
+        component: ComponentName?,
+        action: String,
+    ): Boolean = try {
+        when {
+            component != null -> intent.component = component
+            packageName != null -> intent.setPackage(packageName)
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+        log(
+            "translate launched action=" + action +
+                " target=" + (component?.flattenToShortString() ?: packageName ?: "(system chooser)"),
+        )
+        true
+    } catch (error: Throwable) {
+        log(
+            "translate attempt failed action=" + action +
+                " target=" + (component?.flattenToShortString() ?: packageName ?: "(system chooser)"),
+            error,
+        )
+        false
+    }
+
+    /**
+     * 该包里所有"可能用于翻译"的导出 Activity，按相关度排序。
+     *
+     * 不再依赖 intent-filter 探测（MIUI 的翻译入口不注册标准 action），而是直接列组件的
+     * exported 状态；显式启动只看 exported，所以这样能找到它们。
+     */
+    private fun translateCandidateActivities(packageName: String): List<String> {
+        val packageManager = context.packageManager
+        val activities = try {
+            val info = if (Build.VERSION.SDK_INT >= 33) {
+                packageManager.getPackageInfo(
+                    packageName,
+                    PackageManager.PackageInfoFlags.of(PackageManager.GET_ACTIVITIES.toLong()),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES)
+            }
+            info.activities ?: return emptyList()
+        } catch (error: Throwable) {
+            log("unable to list translate activities", error)
+            return emptyList()
+        }
+        return activities
+            .asSequence()
+            .filter { it.exported && it.enabled }
+            .map { it.name }
+            .filter { name ->
+                val lower = name.lowercase()
+                IGNORED_TRANSLATE_ACTIVITY_HINTS.none { lower.contains(it) }
+            }
+            .sortedBy { name ->
+                val lower = name.lowercase()
+                val index = TRANSLATE_ACTIVITY_HINTS.indexOfFirst { lower.contains(it) }
+                if (index >= 0) index else TRANSLATE_ACTIVITY_HINTS.size
+            }
+            .take(MAX_TRANSLATE_ACTIVITY_ATTEMPTS)
+            .toList()
+    }
+
+    /** 把目标应用的入口与启动器入口写进日志，便于定位"打不开翻译应用"的原因。 */
+    private fun logTranslateAppEntryPoints(packageName: String) {
+        try {
+            val packageManager = context.packageManager
+            val info = if (Build.VERSION.SDK_INT >= 33) {
+                packageManager.getPackageInfo(
+                    packageName,
+                    PackageManager.PackageInfoFlags.of(
+                        PackageManager.GET_ACTIVITIES.toLong(),
+                    ),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES)
+            }
+            log("translate app inspect package=" + packageName)
+            info.activities?.forEach { activity ->
+                log(
+                    "  entry name=" + activity.name +
+                        " exported=" + activity.exported +
+                        " enabled=" + activity.enabled,
+                )
+            }
+            log(
+                "  launcher entry=" + (
+                    packageManager.getLaunchIntentForPackage(packageName)
+                        ?.component?.flattenToShortString() ?: "none"
+                    ),
+            )
+        } catch (error: Throwable) {
+            log("unable to inspect translate app " + packageName, error)
+        }
+    }
+
+    private fun openSystemShare(payload: CapturedContent?) {
+        if (payload == null) {
+            return
+        }
+        try {
+            val intent = Intent(Intent.ACTION_SEND)
+            if (payload.isImage()) {
+                val uri = session?.stagedUri ?: session?.let { publishSharedCopy(it) }
+                if (uri == null) {
+                    showToast("图片未就绪")
+                    return
+                }
+                intent.type = "image/*"
+                intent.putExtra(Intent.EXTRA_STREAM, uri)
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            } else {
+                val text = payload.text
+                if (text.isNullOrBlank()) {
+                    showToast("没有可分享的文字")
+                    return
+                }
+                intent.type = "text/plain"
+                intent.putExtra(Intent.EXTRA_TEXT, text)
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(Intent.createChooser(intent, "分享到"))
+            log("opened system share")
+        } catch (error: Throwable) {
+            log("system share failed", error)
+            showToast("分享失败")
+        }
+    }
+
+    private fun removeFrostedViews() {
+        if (frostedMenuWindow != null || frostedMenuView != null || progressRingView != null) {
+            log(
+                "removeFrostedViews menu=" + (frostedMenuWindow != null) +
+                    " ring=" + (progressRingView != null),
+            )
+        }
+        // 任何一条磨砂收尾路径都要复位手势态，避免 active 卡死导致之后长按无效。
+        active = false
+        mainHandler.removeCallbacks(ringFillRunnable)
+        val ring = progressRingView
+        if (ring != null) {
+            try {
+                windowManager.removeViewImmediate(ring)
+            } catch (ignored: Throwable) {
+                // Already removed.
+            }
+            progressRingView = null
+        }
+        val menu = frostedMenuWindow
+        if (menu != null) {
+            menu.dispose()
+            frostedMenuWindow = null
+        }
+        frostedMenuView = null
+        ringFilled = false
     }
 
     private fun launchPendingShare(pendingSession: Session) {
@@ -2050,109 +1050,6 @@ internal class DragShareController(
         }, "drag-share-local-save")
         worker.start()
     }
-    private fun updatePreviewPosition(x: Float, y: Float) {
-        val params = previewParams ?: return
-        val preview = previewView ?: return
-        val circle = circleMenuView
-        if (isCircleStyle() && menuShown && circle != null) {
-            val avoid = circle.getAvoidRect()
-            val margin = dp(12)
-            var left = GestureMath.previewLeft(x, previewWidth, screenWidth, dp(8))
-            val top = GestureMath.previewTop(
-                y,
-                previewHeight,
-                dp(20),
-                topInset + dp(8),
-                screenHeight - bottomInset - previewHeight - dp(8),
-            )
-            when (circleEdge) {
-                CircleMenuGeometry.EDGE_LEFT -> left = avoid.right + margin
-                CircleMenuGeometry.EDGE_RIGHT -> left = avoid.left - previewWidth - margin
-                else -> {}
-            }
-            params.x = GestureMath.clamp(
-                left,
-                dp(8),
-                Math.max(dp(8), screenWidth - previewWidth - dp(8)),
-            )
-            params.y = GestureMath.clamp(
-                top,
-                topInset + dp(8),
-                Math.max(
-                    topInset + dp(8),
-                    screenHeight - bottomInset - previewHeight - dp(8),
-                ),
-            )
-            updateOverlayLayout(preview, modernPreviewWindow, params)
-            return
-        }
-        val margin = dp(settings.simpleMenuEdgeDistanceDp)
-        var minLeft = dp(8)
-        var maxLeft = Math.max(minLeft, screenWidth - previewWidth - dp(8))
-        var minTop = topInset + dp(8)
-        var maxTop = Math.max(minTop, screenHeight - bottomInset - previewHeight - dp(8))
-        if (menuShown) {
-            if (isVerticalSimpleMenu()) {
-                if (simpleMenuPosition == DragShareSettings.SIMPLE_MENU_POSITION_LEFT) {
-                    minLeft = Math.min(maxLeft, menuLeft + menuWidth + margin)
-                } else if (simpleMenuPosition == DragShareSettings.SIMPLE_MENU_POSITION_RIGHT) {
-                    maxLeft = Math.max(minLeft, menuLeft - previewWidth - margin)
-                }
-            } else if (simpleMenuPosition == DragShareSettings.SIMPLE_MENU_POSITION_TOP) {
-                minTop = Math.min(maxTop, menuTop + menuHeight + margin)
-            } else {
-                maxTop = Math.max(minTop, menuTop - previewHeight - margin)
-            }
-        }
-        params.x = GestureMath.clamp(
-            Math.round(x - previewWidth / 2f),
-            minLeft,
-            maxLeft,
-        )
-        params.y = GestureMath.clamp(
-            Math.round(y - previewHeight - dp(20)),
-            minTop,
-            maxTop,
-        )
-        updateOverlayLayout(preview, modernPreviewWindow, params)
-    }
-    private fun updateOverlayLayout(
-        view: View?,
-        modernWindow: ModernOverlayWindow?,
-        params: WindowManager.LayoutParams?,
-    ) {
-        if (view == null || params == null) {
-            return
-        }
-        try {
-            if (modernWindow != null) {
-                modernWindow.updateLayout()
-            } else {
-                windowManager.updateViewLayout(view, params)
-            }
-        } catch (ignored: Throwable) {
-            // The host may be tearing down its service at the same time.
-        }
-    }
-
-    private fun updatePortalPullEffect(x: Float, y: Float) {
-        val glow = glowView
-        if (glow == null || !isPortalStyle()) {
-            return
-        }
-        val progressStart = Math.max((topInset + dp(120)).toFloat(), screenHeight * 0.45f)
-        val progress = if (menuShown) {
-            1f
-        } else {
-            GestureMath.dragPullProgress(y, progressStart, menuTriggerTop.toFloat())
-        }
-        if (progress > 0.02f && !portalGlowStartedLogged) {
-            portalGlowStartedLogged = true
-            log("portal glow progress started")
-        }
-        glow.setPullProgress(progress, x / Math.max(1f, screenWidth.toFloat()))
-    }
-
     private fun refreshDisplayGeometry() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -2176,64 +1073,8 @@ internal class DragShareController(
             topInset = 0
             bottomInset = 0
         }
-        if (isCircleStyle()) {
-            menuWidth = screenWidth
-            menuHeight = dp(CircleMenuOverlayView.CONTAINER_SIZE_DP)
-            menuLeft = 0
-            menuTop = Math.max(topInset, screenHeight - bottomInset - menuHeight)
-            menuTriggerTop = menuTop
-            return
-        }
-        if (isPortalStyle()) {
-            menuWidth = screenWidth
-            menuHeight = dp(PORTAL_MENU_HEIGHT_DP)
-            menuLeft = 0
-            menuTop = Math.max(topInset, screenHeight - bottomInset - menuHeight)
-            menuTriggerTop = Math.max(
-                menuTop,
-                screenHeight - bottomInset - dp(PORTAL_TRIGGER_FROM_BOTTOM_DP),
-            )
-            return
-        }
-
-        simpleMenuPosition = effectiveSimpleMenuPosition()
-        val menuMargin = dp(settings.simpleMenuEdgeDistanceDp)
-        if (isVerticalSimpleMenu()) {
-            menuWidth = Math.min(dp(SIMPLE_SIDE_MENU_WIDTH_DP), Math.max(1, screenWidth / 2))
-            menuHeight = Math.max(1, screenHeight - topInset - bottomInset)
-            menuTop = topInset
-            menuLeft = if (simpleMenuPosition == DragShareSettings.SIMPLE_MENU_POSITION_LEFT) {
-                menuMargin
-            } else {
-                Math.max(0, screenWidth - menuWidth - menuMargin)
-            }
-            menuTriggerTop = menuTop
-        } else {
-            val horizontalInset = if (isModernStyle() &&
-                simpleMenuPosition == DragShareSettings.SIMPLE_MENU_POSITION_BOTTOM
-            ) {
-                Math.min(
-                    dp(MODERN_BOTTOM_MENU_SIDE_MARGIN_DP),
-                    Math.max(0, (screenWidth - 1) / 2),
-                )
-            } else {
-                0
-            }
-            menuWidth = Math.max(1, screenWidth - horizontalInset * 2)
-            menuHeight = dp(MENU_HEIGHT_DP)
-            menuLeft = horizontalInset
-            if (simpleMenuPosition == DragShareSettings.SIMPLE_MENU_POSITION_TOP) {
-                menuTop = topInset + menuMargin
-                menuTriggerTop = menuTop + dp(MENU_TRIGGER_DP)
-            } else {
-                menuTop = Math.max(
-                    topInset,
-                    screenHeight - bottomInset - menuHeight - menuMargin,
-                )
-                menuTriggerTop = menuTop - dp(MENU_TRIGGER_DP)
-            }
-        }
     }
+
     private fun overlayParams(width: Int, height: Int, title: String): WindowManager.LayoutParams {
         val params = WindowManager.LayoutParams()
         params.type = windowPolicy.windowType
@@ -2252,323 +1093,11 @@ internal class DragShareController(
         return params
     }
 
-    private fun removeGestureViews(animatePreviewExit: Boolean = false) {
-        unregisterNearHandSensor()
-        cancelModernMenuDispose()
-        cancelLinearMenuFadeOut()
-        removeTriggerButtonOnMain()
-        if (!animatePreviewExit) {
-            removePendingPreviewExitImmediately()
-        }
-        val preview = previewView
-        if (preview != null && !animatePreviewExit) {
-            preview.animate().cancel()
-        }
-        menuView?.animate()?.cancel()
-        for (item in menuItems) {
-            item.animate().cancel()
-        }
-        if (animatePreviewExit && preview != null) {
-            startPreviewExit(preview, modernPreviewView, modernPreviewWindow)
-        } else {
-            removeOverlayView(preview, modernPreviewView, modernPreviewWindow)
-        }
-        removeOverlayView(menuView, modernMenuView, modernMenuWindow)
-        val glow = glowView
-        if (glow != null) {
-            glow.stop()
-            try {
-                windowManager.removeViewImmediate(glow)
-            } catch (ignored: Throwable) {
-                // Already removed or never attached.
-            }
-        }
-        mainHandler.removeCallbacks(circleExpandRunnable)
-        val circle = circleMenuView
-        if (circle != null) {
-            circle.collapse()
-            try {
-                windowManager.removeViewImmediate(circle)
-            } catch (ignored: Throwable) {
-                // Already removed or never attached.
-            }
-        }
-        previewView = null
-        modernPreviewView = null
-        modernPreviewWindow = null
-        previewParams = null
-        glowView = null
-        glowParams = null
-        menuView = null
-        modernMenuView = null
-        modernMenuWindow = null
-        modernMenuDisposeRunnable = null
-        fadingLinearMenuView = null
-        modernPreviewEnterStarted = false
-        menuParams = null
-        menuScroll = null
-        menuVerticalScroll = null
-        menuRow = null
-        circleMenuView = null
-        circleMenuParams = null
-        menuItems.clear()
-        selectedTarget = null
-        menuShown = false
-        edgeDirection = 0
-        edgeScrollRemainderPx = 0f
-        circleEdge = CircleMenuGeometry.EDGE_NONE
-        circlePendingEdge = CircleMenuGeometry.EDGE_NONE
-        circleScrollDirection = 0
-        menuLeft = 0
-        menuWidth = 0
+    /** 只剩磨砂一种样式：收尾就是拆掉环与菜单。 */
+    private fun removeGestureViews(@Suppress("UNUSED_PARAMETER") animatePreviewExit: Boolean = false) {
+        removeFrostedViews()
+        ringAwaitingTap = false
     }
-    private fun removeOverlayView(
-        view: View?,
-        modernOverlay: ModernOverlayComposeView?,
-        modernWindow: ModernOverlayWindow?,
-    ) {
-        if (modernWindow != null) {
-            modernWindow.dispose()
-            return
-        }
-        if (view != null) {
-            try {
-                windowManager.removeViewImmediate(view)
-            } catch (ignored: Throwable) {
-                // Already removed or never attached.
-            }
-        }
-        modernOverlay?.disposeOverlay()
-    }
-
-    private fun startPreviewExit(
-        previewToFade: View,
-        modernPreviewToFade: ModernPreviewOverlayView?,
-        modernWindowToFade: ModernOverlayWindow?,
-    ) {
-        removePendingPreviewExitImmediately()
-        val generation = ++previewExitGeneration
-        exitingPreviewView = previewToFade
-        exitingModernPreviewView = modernPreviewToFade
-        exitingModernPreviewWindow = modernWindowToFade
-
-        if (modernWindowToFade != null) {
-            modernWindowToFade.hideAnimated(
-                MODERN_OVERLAY_EXIT_DURATION_MS,
-                Runnable {
-                    finishPreviewExit(
-                        generation,
-                        previewToFade,
-                        modernPreviewToFade,
-                        modernWindowToFade,
-                    )
-                },
-            )
-            return
-        }
-        if (modernPreviewToFade != null) {
-            modernPreviewToFade.hideAnimated()
-            mainHandler.postDelayed(
-                {
-                    finishPreviewExit(
-                        generation,
-                        previewToFade,
-                        modernPreviewToFade,
-                        null,
-                    )
-                },
-                MODERN_OVERLAY_EXIT_DURATION_MS,
-            )
-            return
-        }
-
-        previewToFade.animate().cancel()
-        previewToFade.animate()
-            .alpha(0f)
-            .scaleX(Math.max(0f, previewToFade.scaleX * 0.96f))
-            .scaleY(Math.max(0f, previewToFade.scaleY * 0.96f))
-            .setDuration(PREVIEW_EXIT_DURATION_MS)
-            .setInterpolator(DecelerateInterpolator(1.5f))
-            .withEndAction {
-                finishPreviewExit(
-                    generation,
-                    previewToFade,
-                    null,
-                    null,
-                )
-            }
-            .start()
-    }
-    private fun finishPreviewExit(
-        generation: Int,
-        previewToRemove: View?,
-        modernPreviewToRemove: ModernPreviewOverlayView?,
-        modernWindowToRemove: ModernOverlayWindow?,
-    ) {
-        if (generation != previewExitGeneration ||
-            exitingPreviewView !== previewToRemove ||
-            exitingModernPreviewView !== modernPreviewToRemove ||
-            exitingModernPreviewWindow !== modernWindowToRemove
-        ) {
-            return
-        }
-        exitingPreviewView = null
-        exitingModernPreviewView = null
-        exitingModernPreviewWindow = null
-        removeOverlayView(previewToRemove, modernPreviewToRemove, modernWindowToRemove)
-    }
-
-    private fun isPreviewExitPending(): Boolean = exitingPreviewView != null
-
-    private fun removePendingPreviewExitImmediately() {
-        previewExitGeneration++
-        val previewToRemove = exitingPreviewView
-        val modernPreviewToRemove = exitingModernPreviewView
-        val modernWindowToRemove = exitingModernPreviewWindow
-        exitingPreviewView = null
-        exitingModernPreviewView = null
-        exitingModernPreviewWindow = null
-        previewToRemove?.animate()?.cancel()
-        removeOverlayView(previewToRemove, modernPreviewToRemove, modernWindowToRemove)
-    }
-
-    private fun scheduleModernMenuDispose(
-        menuToDispose: ModernMenuOverlayView,
-        windowToDispose: ModernOverlayWindow?,
-    ) {
-        cancelModernMenuDispose()
-        val disposeRunnable = Runnable {
-            if (menuShown || modernMenuView !== menuToDispose) {
-                return@Runnable
-            }
-            if (windowToDispose != null) {
-                windowToDispose.dispose()
-            } else {
-                try {
-                    windowManager.removeViewImmediate(menuToDispose)
-                } catch (ignored: Throwable) {
-                    // The overlay can already be gone while the host tears down its window.
-                }
-                menuToDispose.disposeOverlay()
-            }
-            if (menuView === menuToDispose) {
-                menuView = null
-                modernMenuView = null
-                modernMenuWindow = null
-                menuParams = null
-            }
-        }
-        modernMenuDisposeRunnable = disposeRunnable
-        if (windowToDispose != null) {
-            windowToDispose.hideAnimated(
-                MODERN_OVERLAY_EXIT_DURATION_MS,
-                Runnable {
-                    if (modernMenuDisposeRunnable === disposeRunnable) {
-                        disposeRunnable.run()
-                    }
-                },
-            )
-        } else {
-            menuToDispose.hideAnimated()
-            mainHandler.postDelayed(disposeRunnable, MODERN_OVERLAY_EXIT_DURATION_MS)
-        }
-    }
-
-    private fun cancelModernMenuDispose() {
-        val pending = modernMenuDisposeRunnable
-        if (pending != null) {
-            mainHandler.removeCallbacks(pending)
-            modernMenuDisposeRunnable = null
-        }
-    }
-    private fun fadeOutLinearMenu(menuToFade: View?) {
-        if (menuToFade == null) {
-            return
-        }
-        cancelLinearMenuFadeOut()
-        val generation = ++linearMenuFadeGeneration
-        fadingLinearMenuView = menuToFade
-        menuToFade.animate().cancel()
-        menuToFade.animate()
-            .alpha(0f)
-            .setDuration(LINEAR_MENU_EXIT_DURATION_MS)
-            .setInterpolator(DecelerateInterpolator(1.5f))
-            .withEndAction {
-                if (generation == linearMenuFadeGeneration &&
-                    fadingLinearMenuView === menuToFade
-                ) {
-                    fadingLinearMenuView = null
-                    if (menuView !== menuToFade || !menuShown) {
-                        removeLinearMenuImmediately(menuToFade)
-                    }
-                }
-            }
-            .start()
-    }
-
-    private fun cancelLinearMenuFadeOut(menuToRestore: View?) {
-        if (fadingLinearMenuView === menuToRestore) {
-            cancelLinearMenuFadeOut()
-        }
-    }
-
-    private fun cancelLinearMenuFadeOut() {
-        linearMenuFadeGeneration++
-        val fading = fadingLinearMenuView
-        fadingLinearMenuView = null
-        fading?.animate()?.cancel()
-    }
-
-    private fun removeLinearMenuImmediately(menuToRemove: View?) {
-        if (menuToRemove == null) {
-            return
-        }
-        menuToRemove.animate().cancel()
-        try {
-            windowManager.removeViewImmediate(menuToRemove)
-        } catch (ignored: Throwable) {
-            // The overlay may already have been removed by the host.
-        }
-    }
-
-    private fun stopEdgeScroll() {
-        edgeDirection = 0
-        circleScrollDirection = 0
-        lastEdgeScrollUptime = 0L
-        edgeScrollRemainderPx = 0f
-        mainHandler.removeCallbacks(edgeScrollRunnable)
-    }
-
-    private fun isPortalStyle(): Boolean = settings.uiStyle == DragShareSettings.STYLE_PORTAL
-
-    private fun isCircleStyle(): Boolean = settings.uiStyle == DragShareSettings.STYLE_CIRCLE
-
-    private fun isModernStyle(): Boolean = settings.uiStyle == DragShareSettings.STYLE_MODERN
-
-    private fun startBackgroundBlockerIfEnabled() {
-        if (!settings.blockBackgroundScroll || backgroundBlockAttempted) {
-            return
-        }
-        backgroundBlockAttempted = true
-        if (!backgroundTouchBlocker.start()) {
-            log("background scroll lock unavailable; continuing without it")
-        }
-    }
-
-    private fun itemBackground(target: ShareTarget?, selected: Boolean): GradientDrawable {
-        if (!selected) {
-            return roundDrawable(Color.TRANSPARENT, if (isPortalStyle()) 28 else 8)
-        }
-        val drawable = roundDrawable(
-            palette.selectedItemBackground,
-            if (isPortalStyle()) 28 else 8,
-        )
-        if (isPortalStyle()) {
-            drawable.setStroke(dp(1), palette.selectedItemBorder)
-        }
-        return drawable
-    }
-
     private fun iconForTarget(target: ShareTarget): Drawable? =
         ShareTargetRepository.iconForDisplay(target)
 
@@ -2623,113 +1152,85 @@ internal class DragShareController(
         var cancelled: Boolean = false
     }
 
-    private class OverlayColors private constructor(
-        val previewBackground: Int,
-        val menuBackground: Int,
-        val primaryText: Int,
-        val secondaryText: Int,
-        val selectedItemBackground: Int,
-        val selectedItemBorder: Int,
-        val accent: Int,
-    ) {
-        companion object {
-            fun light(): OverlayColors = OverlayColors(
-                0xF7FFFFFF.toInt(),
-                0xF4F8FAF9.toInt(),
-                0xFF17201D.toInt(),
-                0xFF55615C.toInt(),
-                0x26137A5A,
-                0x00000000,
-                0xFF137A5A.toInt(),
-            )
-
-            fun from(settings: DragShareSettings?): OverlayColors {
-                if (settings != null && settings.uiStyle == DragShareSettings.STYLE_CIRCLE) {
-                    if (settings.colorMode == DragShareSettings.COLOR_DARK) {
-                        return OverlayColors(
-                            0xF72A2D32.toInt(),
-                            0xE91E242B.toInt(),
-                            0xFFF3F5F4.toInt(),
-                            0xFFB7BFBB.toInt(),
-                            0x4C4C9DFF,
-                            0xAA7AC9FF.toInt(),
-                            0xFF65C6E8.toInt(),
-                        )
-                    }
-                    return OverlayColors(
-                        0xFCFFFFFF.toInt(),
-                        0xE9F7FAFC.toInt(),
-                        0xFF17201D.toInt(),
-                        0xFF65716B.toInt(),
-                        0x3A5DABE8,
-                        0xAA438CB6.toInt(),
-                        0xFF2E9EB7.toInt(),
-                    )
-                }
-                if (settings != null && settings.uiStyle == DragShareSettings.STYLE_PORTAL) {
-                    if (settings.colorMode == DragShareSettings.COLOR_DARK) {
-                        return OverlayColors(
-                            0xF72A2D32.toInt(),
-                            0x003A3E43,
-                            0xFFF3F5F4.toInt(),
-                            0xFFB7BFBB.toInt(),
-                            0x384F8BFF,
-                            0x887AC9FF.toInt(),
-                            0xFF71DDEB.toInt(),
-                        )
-                    }
-                    return OverlayColors(
-                        0xFCFFFFFF.toInt(),
-                        0x00FFFFFF,
-                        0xFF17201D.toInt(),
-                        0xFF65716B.toInt(),
-                        0x306F9DFF,
-                        0x8074B8FF.toInt(),
-                        0xFF2CA9BD.toInt(),
-                    )
-                }
-                if (settings != null && settings.colorMode == DragShareSettings.COLOR_DARK) {
-                    return OverlayColors(
-                        0xF725272A.toInt(),
-                        0xF42F3135.toInt(),
-                        0xFFF3F5F4.toInt(),
-                        0xFFB7BFBB.toInt(),
-                        0x3358B995,
-                        0x6658B995,
-                        0xFF58B995.toInt(),
-                    )
-                }
-                return light()
-            }
-        }
-    }
     companion object {
+        /** 翻译按钮把文字交给目标应用时，依次尝试的 (action, extraKey)。 */
+        private val TRANSLATE_PAYLOADS = listOf(
+            Intent.ACTION_SEND to Intent.EXTRA_TEXT,
+            Intent.ACTION_PROCESS_TEXT to Intent.EXTRA_PROCESS_TEXT,
+            Intent.ACTION_TRANSLATE to Intent.EXTRA_TEXT,
+        )
+
+        /** Activity 名里出现这些词就优先试（越靠前越优先）。 */
+        private val TRANSLATE_ACTIVITY_HINTS = listOf(
+            "intentaitranslate",
+            "intenttrans",
+            "wordstrans",
+            "wordstranslate",
+            "texttranslate",
+            "translate",
+            "translation",
+            "trans",
+        )
+
+        /** Activity 名里出现这些词就跳过（设置/关于/隐私/语音/字幕等显然不是文字翻译入口）。 */
+        private val IGNORED_TRANSLATE_ACTIVITY_HINTS = listOf(
+            "setting",
+            "about",
+            "guide",
+            "privacy",
+            "subtitle",
+            "voice",
+            "phrase",
+            "sns",
+            "feedback",
+            "debug",
+        )
+
+        /**
+         * 一次把文字塞进所有常见 extra key：不同 ROM/应用读的键不一样
+         * （标准是 EXTRA_TEXT / EXTRA_PROCESS_TEXT，MIUI 系还有自定义键）。
+         * 多塞几个没有副作用，能显著提高"自动填入输入框"的成功率。
+         */
+        private val TRANSLATE_EXTRA_KEYS = listOf(
+            Intent.EXTRA_TEXT,
+            Intent.EXTRA_PROCESS_TEXT,
+            Intent.EXTRA_TITLE,
+            "text",
+            "content",
+            "translate_text",
+            "translate_content",
+            "intent_ai_translate_text",
+            "intent_text",
+            "extra_text",
+            "src_text",
+            "source_text",
+            "query",
+        )
+
+        /** 对最可能的入口额外猜几个 MIUI 风格 action（标准 action 之外的）。 */
+        private val TRANSLATE_EXTRA_ACTIONS = listOf(
+            "com.xiaomi.aiasst.vision.action.TRANSLATE",
+            "com.xiaomi.aiasst.action.TRANSLATE",
+            "miui.intent.action.TRANSLATE",
+        )
+
+        private const val MAX_TRANSLATE_ACTIVITY_ATTEMPTS = 4
+
+        /** 试成功过的 (packageName, action, activity)，仅本进程内缓存。 */
+        @Volatile
+        private var cachedTranslateRecipe: Triple<String, String, String>? = null
+
         private const val TAG = "DragShare/UI"
         private const val PENDING_LAUNCH_TIMEOUT_MS = 8_000L
-        private const val PREVIEW_TEXT_WIDTH_DP = 184
-        private const val PREVIEW_TEXT_HEIGHT_DP = 112
-        private const val PREVIEW_IMAGE_SIZE_DP = 148
-        private const val PORTAL_PREVIEW_TEXT_SIZE_DP = 112
-        private const val PORTAL_PREVIEW_IMAGE_SIZE_DP = 116
-        private const val MENU_HEIGHT_DP = 96
-        private const val SIMPLE_SIDE_MENU_WIDTH_DP = 112
-        private const val PORTAL_MENU_HEIGHT_DP = 152
-        private const val MENU_TRIGGER_DP = 72
-        private const val SIMPLE_MENU_ACTIVATION_SLOP_DP = 16
-        private const val EDGE_SCROLL_FULL_SPEED_INSET_DP = 8
-        private const val PORTAL_TRIGGER_FROM_BOTTOM_DP = 96
-        private const val PORTAL_ITEM_ENTER_OFFSET_DP = 168
-        private const val MODERN_OVERLAY_EXIT_DURATION_MS = 220L
-        private const val LINEAR_MENU_EXIT_DURATION_MS = 160L
-        private const val PREVIEW_EXIT_DURATION_MS = 160L
-        private const val MODERN_BOTTOM_MENU_SIDE_MARGIN_DP = 12
-        private const val CIRCLE_EDGE_TRIGGER_DP = 76
-        private const val CIRCLE_EDGE_SOFT_DISTANCE_DP = 180
-        private const val CIRCLE_EDGE_OPEN_DELAY_MS = 200L
         private const val DUPLICATE_EVENT_WINDOW_MS = 2L
-        // 开发分支开关：true = 长按探出小按钮（点按才出菜单），false = 原来的跟手拖拽。
-        // 稳定之后应该升格成 DragShareSettings 里的正式设置项。
-        private const val TRIGGER_BUTTON_MODE = true
+        // 磨砂进度环 + 点环弹出磨砂菜单（唯一保留的样式）。
+        private const val FROSTED_RING_MENU = true
+        private const val RING_FILL_MS = 420L
+        private const val RING_FILL_TICK_MS = 16L
+        private const val RING_SIZE_DP = 48
+        private const val RING_MENU_SIDE_MARGIN_DP = 24
+        private const val RING_MENU_HEIGHT_DP = 460
+        private const val FROSTED_BLUR_RADIUS_DP = 28
         private const val TRIGGER_BUTTON_SIZE_DP = 48
         private const val TRIGGER_BUTTON_TIMEOUT_MS = 10_000L
         private const val TRIGGER_BUTTON_LABEL = "分享"

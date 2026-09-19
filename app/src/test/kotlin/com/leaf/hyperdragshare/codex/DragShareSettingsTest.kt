@@ -1,5 +1,6 @@
 package com.leaf.hyperdragshare.codex
 
+import android.content.Context
 import android.content.res.Configuration
 import android.os.Bundle
 import org.junit.Assert.assertEquals
@@ -8,752 +9,309 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
-import java.util.LinkedHashSet
 
+/**
+ * 覆盖 `DragShareSettings` 仍然保留的设置项：归一化、bundle 往返、本地持久化与查询辅助函数。
+ *
+ * 旧拖拽样式相关字段（uiStyle / simpleMenu* / 图标不透明度 / 滚动参数 / 阻止背景滑动 /
+ * 手指移开时关闭菜单 等）已随样式删除一并移除，对应用例同步删除。
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE)
 class DragShareSettingsTest {
     @Test
-    fun defaultsUseModernStyleAndFullIconOpacity() {
+    fun defaultsMatchDocumentedValues() {
         val settings = DragShareSettings.defaults()
 
         assertEquals(DragShareSettings.COLOR_LIGHT, settings.colorMode)
+        assertEquals(DragShareSettings.CONTENT_CAPTURE_PORTAL, settings.contentCaptureMode)
+        assertEquals(DragShareSettings.DEFAULT_TEXT_SHARING_ENABLED, settings.textSharingEnabled)
+        assertEquals(DragShareSettings.DEFAULT_IMAGE_SHARING_ENABLED, settings.imageSharingEnabled)
+        assertEquals(DragShareSettings.DEFAULT_PRELOAD_TEXT_SEGMENTER, settings.preloadTextSegmenter)
+        assertEquals(DragShareSettings.DEFAULT_LOG_LEVEL, settings.logLevel)
+        assertEquals(DragShareSettings.DEFAULT_LOG_DESTINATION, settings.logDestination)
+        assertEquals(DragShareSettings.DEFAULT_SHARED_COPY_LOCATION, settings.sharedCopyLocation)
         assertEquals(
-            DragShareSettings.CONTENT_CAPTURE_PORTAL,
-            settings.contentCaptureMode,
-        )
-        assertEquals(DragShareSettings.STYLE_MODERN, settings.uiStyle)
-        assertEquals(DragShareSettings.STYLE_MODERN, DragShareSettings.DEFAULT_UI_STYLE)
-        assertEquals(
-            DragShareSettings.STYLE_MODERN,
-            DragShareSettings.fromBundle(Bundle()).uiStyle,
-        )
-        assertEquals(DragShareSettings.DEFAULT_EDGE_TRIGGER_DP, settings.edgeTriggerDp)
-        assertEquals(
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            settings.scrollSpeedDpPerSecond,
-        )
-        assertEquals(
-            DragShareSettings.DEFAULT_BLOCK_BACKGROUND_SCROLL,
-            settings.blockBackgroundScroll,
-        )
-        assertEquals(
-            DragShareSettings.DEFAULT_TEXT_SHARING_ENABLED,
-            settings.textSharingEnabled,
-        )
-        assertEquals(
-            DragShareSettings.DEFAULT_IMAGE_SHARING_ENABLED,
-            settings.imageSharingEnabled,
-        )
-        assertTrue(settings.isTargetVisible(DragShareSettings.TARGET_COPY_TEXT))
-        assertTrue(settings.isTargetVisible(DragShareSettings.TARGET_COPY_IMAGE))
-        assertTrue(settings.preloadTextSegmenter)
-        assertEquals(
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            settings.simpleMenuPosition,
-        )
-        assertEquals(
-            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            settings.simpleMenuOpacityPercent,
-        )
-        assertEquals(
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            settings.simpleMenuCornerRadiusDp,
-        )
-        assertEquals(
-            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            settings.simpleMenuEdgeDistanceDp,
-        )
-        assertEquals(
-            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
-            settings.iconOpacityPercent,
-        )
-        assertEquals(100, DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT)
-        assertEquals(100, settings.iconOpacityPercent)
-        assertEquals(
-            DragShareSettings.DEFAULT_MODERN_BLUR_RADIUS_DP,
-            settings.modernBlurRadiusDp,
-        )
-        assertEquals(
-            DragShareSettings.DEFAULT_MODERN_GLASS_OPACITY_PERCENT,
-            settings.modernGlassOpacityPercent,
-        )
-        assertTrue(settings.closeMenuWhenPointerLeaves)
-        assertTrue(settings.hiddenTargetKeys.isEmpty())
-        assertTrue(settings.targetOrder.isEmpty())
-        assertFalse(settings.accessibilityLandscapeRecognitionEnabled)
-        assertTrue(settings.accessibilityBlacklistedPackages.isEmpty())
-        assertEquals(
-            DragShareSettings.DEFAULT_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
-            settings.accessibilityLongPressTimeoutMillis,
+            DragShareSettings.DEFAULT_ACCESSIBILITY_LANDSCAPE_RECOGNITION_ENABLED,
+            settings.accessibilityLandscapeRecognitionEnabled,
         )
         assertEquals(
             DragShareSettings.DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
             settings.accessibilityRecognitionSensitivityPercent,
         )
+        assertTrue(settings.hiddenTargetKeys.isEmpty())
+        assertTrue(settings.targetOrder.isEmpty())
+        assertTrue(settings.accessibilityBlacklistedPackages.isEmpty())
+    }
+
+    @Test
+    fun emptyBundleFallsBackToDefaults() {
+        val fromBundle = DragShareSettings.fromBundle(Bundle())
+        val defaults = DragShareSettings.defaults()
+
+        assertEquals(defaults.colorMode, fromBundle.colorMode)
+        assertEquals(defaults.contentCaptureMode, fromBundle.contentCaptureMode)
+        assertEquals(defaults.logLevel, fromBundle.logLevel)
+        assertEquals(defaults.logDestination, fromBundle.logDestination)
+        assertEquals(defaults.sharedCopyLocation, fromBundle.sharedCopyLocation)
+        assertTrue(DragShareSettings.fromBundle(null).isPortalCaptureMode())
+    }
+
+    @Test
+    fun bundleRoundTripKeepsEverySurvivingField() {
+        val settings = settings(
+            colorMode = DragShareSettings.COLOR_DARK,
+            contentCaptureMode = DragShareSettings.CONTENT_CAPTURE_ACCESSIBILITY,
+            textSharingEnabled = false,
+            imageSharingEnabled = true,
+            hiddenTargetKeys = setOf("pkg.hidden", DragShareSettings.TARGET_COPY),
+            targetOrder = listOf("pkg.first", "pkg.second"),
+            accessibilityLandscapeRecognitionEnabled = true,
+            accessibilityBlacklistedPackages = setOf("pkg.blocked"),
+            accessibilityLongPressTimeoutMillis = 500,
+            accessibilityRecognitionSensitivityPercent = 150,
+            preloadTextSegmenter = false,
+            logLevel = DragShareSettings.LOG_LEVEL_DEBUG,
+            logDestination = DragShareSettings.LOG_DESTINATION_FILE,
+            sharedCopyLocation = DragShareSettings.SHARED_COPY_LOCATION_PUBLIC,
+        )
+
+        val restored = DragShareSettings.fromBundle(settings.toBundle())
+
+        assertEquals(settings.colorMode, restored.colorMode)
+        assertEquals(settings.contentCaptureMode, restored.contentCaptureMode)
+        assertEquals(settings.textSharingEnabled, restored.textSharingEnabled)
+        assertEquals(settings.imageSharingEnabled, restored.imageSharingEnabled)
+        assertEquals(settings.hiddenTargetKeys, restored.hiddenTargetKeys)
+        assertEquals(settings.targetOrder, restored.targetOrder)
+        assertEquals(
+            settings.accessibilityLandscapeRecognitionEnabled,
+            restored.accessibilityLandscapeRecognitionEnabled,
+        )
+        assertEquals(
+            settings.accessibilityBlacklistedPackages,
+            restored.accessibilityBlacklistedPackages,
+        )
+        assertEquals(
+            settings.accessibilityLongPressTimeoutMillis,
+            restored.accessibilityLongPressTimeoutMillis,
+        )
+        assertEquals(
+            settings.accessibilityRecognitionSensitivityPercent,
+            restored.accessibilityRecognitionSensitivityPercent,
+        )
+        assertEquals(settings.preloadTextSegmenter, restored.preloadTextSegmenter)
+        assertEquals(settings.logLevel, restored.logLevel)
+        assertEquals(settings.logDestination, restored.logDestination)
+        assertEquals(settings.sharedCopyLocation, restored.sharedCopyLocation)
+    }
+
+    @Test
+    fun colorModeNormalizesUnknownValuesToLight() {
+        assertEquals(DragShareSettings.COLOR_LIGHT, settings(colorMode = 7).colorMode)
+        assertEquals(
+            DragShareSettings.COLOR_DARK,
+            settings(colorMode = DragShareSettings.COLOR_DARK).colorMode,
+        )
+    }
+
+    @Test
+    fun captureModeNormalizesUnknownValuesToPortal() {
+        val settings = settings(contentCaptureMode = 42)
+
+        assertTrue(settings.isPortalCaptureMode())
+        assertFalse(settings.isAccessibilityCaptureMode())
+        assertTrue(
+            settings(contentCaptureMode = DragShareSettings.CONTENT_CAPTURE_ACCESSIBILITY)
+                .isAccessibilityCaptureMode(),
+        )
+    }
+
+    @Test
+    fun logLevelAndDestinationNormalizeUnknownValues() {
+        val settings = settings(logLevel = 99, logDestination = 99)
+
         assertEquals(DragShareSettings.LOG_LEVEL_INFO, settings.logLevel)
         assertEquals(DragShareSettings.LOG_DESTINATION_SYSTEM, settings.logDestination)
-        assertEquals(650, settings.resolveAccessibilityLongPressTimeoutMillis(650))
-        assertEquals(1f, settings.accessibilityTouchSlopMultiplier(), 0f)
-        assertFalse(
-            settings.isAccessibilityRecognitionEnabledForOrientation(
-                Configuration.ORIENTATION_LANDSCAPE,
-            ),
+        assertEquals(
+            DragShareSettings.LOG_LEVEL_DISABLED,
+            settings(logLevel = DragShareSettings.LOG_LEVEL_DISABLED).logLevel,
         )
-        assertTrue(
-            settings.isAccessibilityRecognitionEnabledForOrientation(
-                Configuration.ORIENTATION_PORTRAIT,
-            ),
-        )
-    }
-
-    @Test
-    fun diagnosticLoggingSettingsAreClampedAndRoundTripThroughProviderBundle() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
-            true,
-            LinkedHashSet<String>(),
-            emptyList(),
-            DragShareSettings.CONTENT_CAPTURE_PORTAL,
-            false,
-            LinkedHashSet<String>(),
-            DragShareSettings.DEFAULT_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
-            DragShareSettings.DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
-            true,
-            DragShareSettings.DEFAULT_MODERN_BLUR_RADIUS_DP,
-            DragShareSettings.DEFAULT_MODERN_GLASS_OPACITY_PERCENT,
-            DragShareSettings.LOG_LEVEL_DEBUG,
+        assertEquals(
             DragShareSettings.LOG_DESTINATION_FILE,
-        )
-        val roundTripped = DragShareSettings.fromBundle(settings.toBundle())
-        assertEquals(DragShareSettings.LOG_LEVEL_DEBUG, roundTripped.logLevel)
-        assertEquals(DragShareSettings.LOG_DESTINATION_FILE, roundTripped.logDestination)
-
-        val invalid = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
-            true,
-            LinkedHashSet<String>(),
-            emptyList(),
-            DragShareSettings.CONTENT_CAPTURE_PORTAL,
-            false,
-            LinkedHashSet<String>(),
-            DragShareSettings.DEFAULT_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
-            DragShareSettings.DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
-            true,
-            DragShareSettings.DEFAULT_MODERN_BLUR_RADIUS_DP,
-            DragShareSettings.DEFAULT_MODERN_GLASS_OPACITY_PERCENT,
-            99,
-            99,
-        )
-        assertEquals(DragShareSettings.LOG_LEVEL_INFO, invalid.logLevel)
-        assertEquals(DragShareSettings.LOG_DESTINATION_SYSTEM, invalid.logDestination)
-    }
-
-    @Test
-    fun invalidValuesAreClampedToSupportedRanges() {
-        val settings = DragShareSettings(
-            99,
-            Int.MIN_VALUE,
-            Int.MAX_VALUE,
-        )
-
-        assertEquals(DragShareSettings.COLOR_LIGHT, settings.colorMode)
-        assertEquals(DragShareSettings.DEFAULT_UI_STYLE, settings.uiStyle)
-        assertEquals(DragShareSettings.MIN_EDGE_TRIGGER_DP, settings.edgeTriggerDp)
-        assertEquals(
-            DragShareSettings.MAX_SCROLL_SPEED_DP_PER_SECOND,
-            settings.scrollSpeedDpPerSecond,
+            settings(logDestination = DragShareSettings.LOG_DESTINATION_FILE).logDestination,
         )
     }
 
     @Test
-    fun darkModeAndUpperEdgeValuesAreRetained() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_DARK,
-            DragShareSettings.STYLE_PORTAL,
-            DragShareSettings.MAX_EDGE_TRIGGER_DP,
-            DragShareSettings.MAX_SCROLL_SPEED_DP_PER_SECOND,
-            true,
-        )
-
-        assertEquals(DragShareSettings.COLOR_DARK, settings.colorMode)
-        assertEquals(DragShareSettings.STYLE_PORTAL, settings.uiStyle)
-        assertEquals(DragShareSettings.MAX_EDGE_TRIGGER_DP, settings.edgeTriggerDp)
+    fun sharedCopyLocationOnlyKeepsPublicOrModule() {
         assertEquals(
-            DragShareSettings.MAX_SCROLL_SPEED_DP_PER_SECOND,
-            settings.scrollSpeedDpPerSecond,
-        )
-        assertEquals(true, settings.blockBackgroundScroll)
-    }
-
-    @Test
-    fun circleStyleIsAcceptedAndPreserved() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_CIRCLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-        )
-
-        assertEquals(DragShareSettings.STYLE_CIRCLE, settings.uiStyle)
-    }
-
-    @Test
-    fun modernStyleAndBlurParametersAreClampedAndRoundTrip() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_DARK,
-            DragShareSettings.STYLE_MODERN,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
-            true,
-            LinkedHashSet<String>(),
-            emptyList(),
-            DragShareSettings.CONTENT_CAPTURE_PORTAL,
-            false,
-            LinkedHashSet<String>(),
-            DragShareSettings.DEFAULT_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
-            DragShareSettings.DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
-            true,
-            Int.MAX_VALUE,
-            Int.MIN_VALUE,
-        )
-
-        assertTrue(settings.isModernStyle())
-        assertEquals(
-            DragShareSettings.MAX_MODERN_BLUR_RADIUS_DP,
-            settings.modernBlurRadiusDp,
+            DragShareSettings.SHARED_COPY_LOCATION_PUBLIC,
+            settings(
+                sharedCopyLocation = DragShareSettings.SHARED_COPY_LOCATION_PUBLIC,
+            ).sharedCopyLocation,
         )
         assertEquals(
-            DragShareSettings.MIN_MODERN_GLASS_OPACITY_PERCENT,
-            settings.modernGlassOpacityPercent,
-        )
-        val fromBundle = DragShareSettings.fromBundle(settings.toBundle())
-        assertEquals(DragShareSettings.STYLE_MODERN, fromBundle.uiStyle)
-        assertEquals(settings.modernBlurRadiusDp, fromBundle.modernBlurRadiusDp)
-        assertEquals(settings.modernGlassOpacityPercent, fromBundle.modernGlassOpacityPercent)
-    }
-
-    @Test
-    fun sharingSwitchesAndTargetRulesAreRetained() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            false,
-            true,
-            LinkedHashSet(listOf("pkg/.Hidden")),
-            listOf("pkg/.Second", "pkg/.First"),
-        )
-
-        assertFalse(settings.isSharingEnabled(false))
-        assertTrue(settings.isSharingEnabled(true))
-        assertFalse(settings.isTargetVisible("pkg/.Hidden"))
-        assertTrue(settings.isTargetVisible("pkg/.Visible"))
-        assertEquals(
-            listOf("pkg/.Second", "pkg/.First"),
-            settings.targetOrder,
+            DragShareSettings.SHARED_COPY_LOCATION_MODULE,
+            settings(sharedCopyLocation = 77).sharedCopyLocation,
         )
     }
 
     @Test
-    fun simpleMenuOptionsAreClamped() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            99,
-            Int.MIN_VALUE,
-            Int.MAX_VALUE,
-            false,
-            LinkedHashSet<String>(),
-            emptyList(),
-        )
-
-        assertEquals(DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION, settings.simpleMenuPosition)
+    fun accessibilityLongPressTimeoutClampsAndFollowsSystem() {
+        // 0（默认）表示跟随系统，并把系统值夹到允许区间内。
         assertEquals(
-            DragShareSettings.MIN_SIMPLE_MENU_OPACITY_PERCENT,
-            settings.simpleMenuOpacityPercent,
+            DragShareSettings.MIN_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
+            settings(accessibilityLongPressTimeoutMillis = 0)
+                .resolveAccessibilityLongPressTimeoutMillis(10),
         )
         assertEquals(
-            DragShareSettings.MAX_SIMPLE_MENU_CORNER_RADIUS_DP,
-            settings.simpleMenuCornerRadiusDp,
-        )
-        assertFalse(settings.closeMenuWhenPointerLeaves)
-    }
-
-    @Test
-    fun portalSettingsRetainSimpleMenuBackgroundOpacity() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            DragShareSettings.MIN_SIMPLE_MENU_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
-            true,
-            LinkedHashSet<String>(),
-            emptyList(),
-            DragShareSettings.CONTENT_CAPTURE_PORTAL,
-        )
-
-        val portalSettings = DragShareSettings.fromBundle(settings.toBundle())
-
-        assertTrue(portalSettings.isPortalCaptureMode())
-        assertEquals(
-            DragShareSettings.MIN_SIMPLE_MENU_OPACITY_PERCENT,
-            portalSettings.simpleMenuOpacityPercent,
+            DragShareSettings.MAX_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
+            settings(accessibilityLongPressTimeoutMillis = 0)
+                .resolveAccessibilityLongPressTimeoutMillis(99_999),
         )
         assertEquals(
-            0.2f,
-            DragShareController.simpleMenuBackgroundOpacityFraction(
-                portalSettings.simpleMenuOpacityPercent,
-            ),
-            0f,
-        )
-    }
-
-    @Test
-    fun edgeDistanceAndIconOpacityAreClamped() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            Int.MAX_VALUE,
-            Int.MIN_VALUE,
-            true,
-            LinkedHashSet<String>(),
-            emptyList(),
-        )
-
-        assertEquals(
-            DragShareSettings.MAX_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            settings.simpleMenuEdgeDistanceDp,
-        )
-        assertEquals(
-            DragShareSettings.MIN_ICON_OPACITY_PERCENT,
-            settings.iconOpacityPercent,
-        )
-    }
-
-    @Test
-    fun hiddenTargetsDoNotEnterSettingsOrder() {
-        val hidden = ShareTarget.saveToLocal(null)
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            LinkedHashSet(listOfNotNull(hidden.key())),
-            listOfNotNull(hidden.key()),
-        )
-
-        val ordered = ShareTargetRepository.orderForSettings(
-            listOf(hidden),
-            settings,
-        )
-        assertTrue(ordered.isEmpty())
-    }
-
-    @Test
-    fun builtInActionsAppearForMatchingPayloads() {
-        val settings = DragShareSettings.defaults()
-
-        val textTargets = ShareTargetRepository.applySettings(
-            null,
-            emptyList(),
-            settings,
-            false,
-        )
-        val imageTargets = ShareTargetRepository.applySettings(
-            null,
-            emptyList(),
-            settings,
-            true,
-        )
-
-        assertEquals(2, textTargets.size)
-        assertTrue(textTargets[0].isCopyTextToClipboard())
-        assertTrue(textTargets[1].isTextSegmentation())
-        assertEquals(2, imageTargets.size)
-        assertTrue(imageTargets[0].isCopyImageToClipboard())
-        assertTrue(imageTargets[1].isSaveToLocal())
-    }
-
-    @Test
-    fun accessibilityCaptureModeRoundTripsThroughBundle() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
-            true,
-            LinkedHashSet<String>(),
-            emptyList(),
-            DragShareSettings.CONTENT_CAPTURE_ACCESSIBILITY,
-            true,
-            LinkedHashSet(listOf("pkg.accessibility.blacklisted")),
-            700,
-            150,
-        )
-
-        assertTrue(settings.isAccessibilityCaptureMode())
-        assertTrue(settings.accessibilityLandscapeRecognitionEnabled)
-        assertTrue(
-            settings.isAccessibilityRecognitionEnabledForOrientation(
-                Configuration.ORIENTATION_LANDSCAPE,
-            ),
-        )
-        assertTrue(settings.isAccessibilityPackageBlacklisted("pkg.accessibility.blacklisted"))
-        assertEquals(700, settings.accessibilityLongPressTimeoutMillis)
-        assertEquals(150, settings.accessibilityRecognitionSensitivityPercent)
-        assertEquals(1.5f, settings.accessibilityTouchSlopMultiplier(), 0f)
-        assertEquals(
-            DragShareSettings.CONTENT_CAPTURE_ACCESSIBILITY,
-            DragShareSettings.fromBundle(settings.toBundle()).contentCaptureMode,
-        )
-        assertTrue(
-            DragShareSettings.fromBundle(settings.toBundle())
-                .accessibilityLandscapeRecognitionEnabled,
-        )
-        assertTrue(
-            DragShareSettings.fromBundle(settings.toBundle())
-                .isAccessibilityPackageBlacklisted("pkg.accessibility.blacklisted"),
-        )
-        assertEquals(
-            700,
-            DragShareSettings.fromBundle(settings.toBundle())
+            DragShareSettings.MAX_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
+            settings(accessibilityLongPressTimeoutMillis = 99_999)
                 .accessibilityLongPressTimeoutMillis,
         )
         assertEquals(
-            150,
-            DragShareSettings.fromBundle(settings.toBundle())
+            600,
+            settings(accessibilityLongPressTimeoutMillis = 600)
+                .resolveAccessibilityLongPressTimeoutMillis(300),
+        )
+    }
+
+    @Test
+    fun recognitionSensitivityBecomesTouchSlopMultiplier() {
+        assertEquals(
+            1f,
+            settings(accessibilityRecognitionSensitivityPercent = 100)
+                .accessibilityTouchSlopMultiplier(),
+            0.0001f,
+        )
+        assertEquals(
+            1.5f,
+            settings(accessibilityRecognitionSensitivityPercent = 150)
+                .accessibilityTouchSlopMultiplier(),
+            0.0001f,
+        )
+        assertEquals(
+            DragShareSettings.MAX_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
+            settings(accessibilityRecognitionSensitivityPercent = 99_999)
                 .accessibilityRecognitionSensitivityPercent,
         )
     }
 
     @Test
-    fun legacyCopyPreferencesMigrateToSeparateVisibleTargets() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
-            true,
-            LinkedHashSet<String>(),
-            emptyList(),
-            DragShareSettings.CONTENT_CAPTURE_PORTAL,
-            false,
-            LinkedHashSet<String>(),
-            DragShareSettings.DEFAULT_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
-            DragShareSettings.DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
-            false,
-            false,
-            true,
-        )
-
-        assertFalse(settings.preloadTextSegmenter)
-        assertFalse(settings.isTargetVisible(DragShareSettings.TARGET_COPY_TEXT))
-        assertTrue(settings.isTargetVisible(DragShareSettings.TARGET_COPY_IMAGE))
-        val textTargets = ShareTargetRepository.applySettings(
-            null,
-            emptyList(),
-            settings,
-            false,
-        )
-        val imageTargets = ShareTargetRepository.applySettings(
-            null,
-            emptyList(),
-            settings,
-            true,
-        )
-        assertEquals(1, textTargets.size)
-        assertTrue(textTargets[0].isTextSegmentation())
-        assertEquals(2, imageTargets.size)
-        assertTrue(imageTargets[0].isCopyImageToClipboard())
-        assertTrue(imageTargets[1].isSaveToLocal())
-        assertFalse(DragShareSettings.fromBundle(settings.toBundle()).preloadTextSegmenter)
-        assertFalse(
-            DragShareSettings.fromBundle(settings.toBundle())
-                .isTargetVisible(DragShareSettings.TARGET_COPY_TEXT),
-        )
+    fun orientationRecognitionHonoursEnabledFlag() {
+        val disabled = settings(accessibilityLandscapeRecognitionEnabled = false)
         assertTrue(
-            DragShareSettings.fromBundle(settings.toBundle())
-                .isTargetVisible(DragShareSettings.TARGET_COPY_IMAGE),
-        )
-        assertTrue(DragShareSettings.fromBundle(Bundle()).preloadTextSegmenter)
-        assertTrue(
-            DragShareSettings.fromBundle(Bundle())
-                .isTargetVisible(DragShareSettings.TARGET_COPY_TEXT),
-        )
-        assertTrue(
-            DragShareSettings.fromBundle(Bundle())
-                .isTargetVisible(DragShareSettings.TARGET_COPY_IMAGE),
-        )
-
-        val sharedCopyHidden = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            LinkedHashSet(listOf(DragShareSettings.TARGET_COPY)),
-            emptyList(),
-        )
-        assertFalse(sharedCopyHidden.isTargetVisible(DragShareSettings.TARGET_COPY_TEXT))
-        assertFalse(sharedCopyHidden.isTargetVisible(DragShareSettings.TARGET_COPY_IMAGE))
-    }
-
-    @Test
-    fun accessibilityGestureValuesAreClamped() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
-            true,
-            LinkedHashSet<String>(),
-            emptyList(),
-            DragShareSettings.CONTENT_CAPTURE_ACCESSIBILITY,
-            false,
-            LinkedHashSet<String>(),
-            Int.MIN_VALUE,
-            Int.MAX_VALUE,
-        )
-
-        assertEquals(
-            DragShareSettings.MIN_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
-            settings.accessibilityLongPressTimeoutMillis,
-        )
-        assertEquals(
-            DragShareSettings.MAX_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
-            settings.accessibilityRecognitionSensitivityPercent,
-        )
-    }
-
-    @Test
-    fun invalidCaptureModesMigrateToPortal() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
-            true,
-            LinkedHashSet<String>(),
-            emptyList(),
-            99,
-        )
-        assertTrue(settings.isPortalCaptureMode())
-
-        val oldBundle = Bundle()
-        assertTrue(DragShareSettings.fromBundle(oldBundle).isPortalCaptureMode())
-    }
-
-    @Test
-    fun backgroundScrollSettingRoundTripsThroughPortalBundle() {
-        val settings = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            true,
-        )
-
-        assertTrue(settings.blockBackgroundScroll)
-        assertTrue(DragShareSettings.fromBundle(settings.toBundle()).blockBackgroundScroll)
-    }
-
-    @Test
-    fun accessibilityBlacklistCombinesUserAndBuiltInPackages() {
-        assertTrue(
-            AccessibilityBlacklist.isBlockedByPackages(
-                "pkg.user",
-                LinkedHashSet(listOf("pkg.user")),
-                LinkedHashSet<String>(),
-            ),
-        )
-        assertTrue(
-            AccessibilityBlacklist.isBlockedByPackages(
-                "pkg.builtin",
-                LinkedHashSet<String>(),
-                LinkedHashSet(listOf("pkg.builtin")),
+            disabled.isAccessibilityRecognitionEnabledForOrientation(
+                Configuration.ORIENTATION_PORTRAIT,
             ),
         )
         assertFalse(
-            AccessibilityBlacklist.isBlockedByPackages(
-                "pkg.allowed",
-                LinkedHashSet(listOf("pkg.user")),
-                LinkedHashSet(listOf("pkg.builtin")),
+            disabled.isAccessibilityRecognitionEnabledForOrientation(
+                Configuration.ORIENTATION_LANDSCAPE,
+            ),
+        )
+
+        val enabled = settings(accessibilityLandscapeRecognitionEnabled = true)
+        assertTrue(
+            enabled.isAccessibilityRecognitionEnabledForOrientation(
+                Configuration.ORIENTATION_LANDSCAPE,
             ),
         )
     }
 
     @Test
-    fun sharedCopyLocationDefaultsToTheModuleDirectoryAndRoundTripsThroughBundle() {
-        // The private capability URI leaves nothing in the gallery, so it stays the default;
-        // publishing a gallery-visible copy is the choice the user has to make deliberately.
-        assertEquals(
-            DragShareSettings.SHARED_COPY_LOCATION_MODULE,
-            DragShareSettings.defaults().sharedCopyLocation,
+    fun hiddenTargetsDriveVisibilityAndPackageBlacklist() {
+        val settings = settings(
+            hiddenTargetKeys = setOf("pkg.hidden"),
+            accessibilityBlacklistedPackages = setOf("pkg.blocked"),
         )
 
-        val published = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
-            true,
-            LinkedHashSet<String>(),
-            emptyList(),
-            DragShareSettings.CONTENT_CAPTURE_PORTAL,
-            false,
-            LinkedHashSet<String>(),
-            DragShareSettings.DEFAULT_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
-            DragShareSettings.DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
-            true,
-            DragShareSettings.DEFAULT_MODERN_BLUR_RADIUS_DP,
-            DragShareSettings.DEFAULT_MODERN_GLASS_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_LOG_LEVEL,
-            DragShareSettings.DEFAULT_LOG_DESTINATION,
-            DragShareSettings.SHARED_COPY_LOCATION_PUBLIC,
-        )
-        assertEquals(
-            DragShareSettings.SHARED_COPY_LOCATION_PUBLIC,
-            published.sharedCopyLocation,
-        )
-        assertEquals(
-            DragShareSettings.SHARED_COPY_LOCATION_PUBLIC,
-            DragShareSettings.fromBundle(published.toBundle()).sharedCopyLocation,
-        )
-
-        // An older injected process, or a preference file written by a build that predates the
-        // choice, must not silently start publishing gallery-visible copies.
-        val unknown = DragShareSettings(
-            DragShareSettings.COLOR_LIGHT,
-            DragShareSettings.STYLE_SIMPLE,
-            DragShareSettings.DEFAULT_EDGE_TRIGGER_DP,
-            DragShareSettings.DEFAULT_SCROLL_SPEED_DP_PER_SECOND,
-            false,
-            true,
-            true,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_POSITION,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_CORNER_RADIUS_DP,
-            DragShareSettings.DEFAULT_SIMPLE_MENU_EDGE_DISTANCE_DP,
-            DragShareSettings.DEFAULT_ICON_OPACITY_PERCENT,
-            true,
-            LinkedHashSet<String>(),
-            emptyList(),
-            DragShareSettings.CONTENT_CAPTURE_PORTAL,
-            false,
-            LinkedHashSet<String>(),
-            DragShareSettings.DEFAULT_ACCESSIBILITY_LONG_PRESS_TIMEOUT_MILLIS,
-            DragShareSettings.DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
-            true,
-            DragShareSettings.DEFAULT_MODERN_BLUR_RADIUS_DP,
-            DragShareSettings.DEFAULT_MODERN_GLASS_OPACITY_PERCENT,
-            DragShareSettings.DEFAULT_LOG_LEVEL,
-            DragShareSettings.DEFAULT_LOG_DESTINATION,
-            7,
-        )
-        assertEquals(
-            DragShareSettings.SHARED_COPY_LOCATION_MODULE,
-            unknown.sharedCopyLocation,
-        )
+        assertFalse(settings.isTargetVisible("pkg.hidden"))
+        assertTrue(settings.isTargetVisible("pkg.visible"))
+        assertFalse(settings.isTargetVisible(null))
+        assertTrue(settings.isAccessibilityPackageBlacklisted("pkg.blocked"))
+        assertFalse(settings.isAccessibilityPackageBlacklisted("pkg.other"))
+        assertFalse(settings.isAccessibilityPackageBlacklisted(null))
     }
+
+    @Test
+    fun sharingTogglesSelectTextOrImage() {
+        val settings = settings(textSharingEnabled = false, imageSharingEnabled = true)
+
+        assertFalse(settings.isSharingEnabled(image = false))
+        assertTrue(settings.isSharingEnabled(image = true))
+    }
+
+    @Test
+    fun localPersistenceRoundTrip() {
+        val context: Context = RuntimeEnvironment.getApplication()
+        val settings = settings(
+            colorMode = DragShareSettings.COLOR_DARK,
+            contentCaptureMode = DragShareSettings.CONTENT_CAPTURE_ACCESSIBILITY,
+            targetOrder = listOf("pkg.a", "pkg.b"),
+            logLevel = DragShareSettings.LOG_LEVEL_DEBUG,
+            sharedCopyLocation = DragShareSettings.SHARED_COPY_LOCATION_PUBLIC,
+        )
+
+        settings.saveLocal(context)
+        val restored = DragShareSettings.readLocal(context)
+
+        assertEquals(settings.colorMode, restored.colorMode)
+        assertEquals(settings.contentCaptureMode, restored.contentCaptureMode)
+        assertEquals(settings.targetOrder, restored.targetOrder)
+        assertEquals(settings.logLevel, restored.logLevel)
+        assertEquals(settings.sharedCopyLocation, restored.sharedCopyLocation)
+
+        // 复原默认值，避免影响同一进程内的其它用例。
+        DragShareSettings.defaults().saveLocal(context)
+    }
+
+    private fun settings(
+        colorMode: Int = DragShareSettings.COLOR_LIGHT,
+        textSharingEnabled: Boolean = true,
+        imageSharingEnabled: Boolean = true,
+        hiddenTargetKeys: Set<String> = emptySet(),
+        targetOrder: List<String> = emptyList(),
+        contentCaptureMode: Int = DragShareSettings.CONTENT_CAPTURE_PORTAL,
+        accessibilityLandscapeRecognitionEnabled: Boolean = false,
+        accessibilityBlacklistedPackages: Set<String> = emptySet(),
+        accessibilityLongPressTimeoutMillis: Int = 0,
+        accessibilityRecognitionSensitivityPercent: Int =
+            DragShareSettings.DEFAULT_ACCESSIBILITY_RECOGNITION_SENSITIVITY_PERCENT,
+        preloadTextSegmenter: Boolean = true,
+        logLevel: Int = DragShareSettings.DEFAULT_LOG_LEVEL,
+        logDestination: Int = DragShareSettings.DEFAULT_LOG_DESTINATION,
+        sharedCopyLocation: Int = DragShareSettings.DEFAULT_SHARED_COPY_LOCATION,
+        frostedPlateAlphaPercent: Int = DragShareSettings.DEFAULT_FROSTED_PLATE_ALPHA_PERCENT,
+        frostedBlurRadiusDp: Int = DragShareSettings.DEFAULT_FROSTED_BLUR_RADIUS_DP,
+        frostedDarknessPercent: Int = DragShareSettings.DEFAULT_FROSTED_DARKNESS_PERCENT,
+        translateAppPackage: String = DragShareSettings.DEFAULT_TRANSLATE_APP_PACKAGE,
+    ): DragShareSettings = DragShareSettings(
+        colorMode,
+        textSharingEnabled,
+        imageSharingEnabled,
+        hiddenTargetKeys,
+        targetOrder,
+        contentCaptureMode,
+        accessibilityLandscapeRecognitionEnabled,
+        accessibilityBlacklistedPackages,
+        accessibilityLongPressTimeoutMillis,
+        accessibilityRecognitionSensitivityPercent,
+        preloadTextSegmenter,
+        logLevel,
+        logDestination,
+        sharedCopyLocation,
+        frostedPlateAlphaPercent,
+        frostedBlurRadiusDp,
+        frostedDarknessPercent,
+        translateAppPackage,
+    )
 }

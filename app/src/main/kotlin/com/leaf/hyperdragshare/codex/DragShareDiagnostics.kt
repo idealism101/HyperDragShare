@@ -155,7 +155,8 @@ internal object DragShareDiagnostics {
         }
     }
 
-    private fun runRootCommand(command: String): String {
+    /** 也供 TranslateAppDiagnostics 复用；调用方需自备后台线程（最长阻塞 5s）。 */
+    internal fun runRootCommand(command: String): String {
         var process: Process? = null
         try {
             process = ProcessBuilder("su", "-c", command)

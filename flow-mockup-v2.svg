@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 1010" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <rect width="680" height="1010" fill="#f4f6fb"/>
+  <text x="34" y="46" font-size="26" font-weight="700" fill="#1f2a44">交互流程渲染图（确认稿 · 非真机截图）</text>
+  <text x="34" y="74" font-size="14" fill="#5a6b8c">长按 → 小按钮（环）→ 点按钮 → 菜单（图标网格）→ 点目标 / 点空白</text>
+
+  <!-- reusable ring button -->
+  <defs>
+    <g id="ringBtn">
+      <circle r="22" fill="none" stroke="#4285F4" stroke-width="15"/>
+      <path d="M -6.9 -20.9 A 22 22 0 0 0 -21.9 -5.1" fill="none" stroke="#7EC9F5" stroke-width="15"/>
+    </g>
+  </defs>
+
+  <!-- Step 1 -->
+  <g transform="translate(34,100)">
+    <rect width="612" height="240" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">① 长按（识别后）</text>
+    <text x="20" y="52" font-size="12.5" fill="#6b7a99">不弹预览、不跟手。只在手指旁探出「环形小按钮」。</text>
+    <rect x="360" y="66" width="220" height="150" rx="14" fill="#0f1726"/>
+    <text x="378" y="98" font-size="12" fill="#cdd6ea">长按选中的一段内容…</text>
+    <text x="378" y="120" font-size="12" fill="#cdd6ea">（无预览图弹出）</text>
+    <!-- finger + ring button -->
+    <circle cx="470" cy="176" r="9" fill="#f0b4a0" opacity="0.85"/>
+    <g transform="translate(524,150)"><use href="#ringBtn"/></g>
+    <text x="20" y="180" font-size="12" fill="#2e7d57">✓ 环形：蓝环 + 浅蓝高亮段　✓ 手势期间不可点，抬手后才可点</text>
+    <text x="20" y="214" font-size="12" fill="#8a97b3">参考样式 image#1（蓝色粗环 / 浅蓝段）</text>
+  </g>
+
+  <!-- Step 2 -->
+  <g transform="translate(34,360)">
+    <rect width="612" height="330" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">② 点按小按钮</text>
+    <text x="20" y="52" font-size="12.5" fill="#6b7a99">按钮消失，原位附近弹出「图标网格菜单」（HyperOS 分享面板样式）。</text>
+    <rect x="40" y="66" width="250" height="240" rx="22" fill="#e9eaec" opacity="0.96"/>
+    <!-- 4x4 grid of icons -->
+    <g>
+      <g transform="translate(72,96)"><rect width="40" height="40" rx="10" fill="#3c4043"/><circle cx="20" cy="20" r="10" fill="#9aa0a6"/></g>
+      <g transform="translate(126,96)"><rect width="40" height="40" rx="20" fill="#3478f6"/><circle cx="20" cy="20" r="9" fill="#ffffff"/></g>
+      <g transform="translate(180,96)"><rect width="40" height="40" rx="10" fill="#ffffff"/><path d="M8 26 L20 10 L32 26 Z" fill="#fbbc04"/><circle cx="20" cy="14" r="5" fill="#ea4335"/></g>
+      <g transform="translate(234,96)"><rect width="40" height="40" rx="20" fill="#ffffff"/><circle cx="20" cy="20" r="13" fill="#34a853"/><rect x="14" y="17" width="12" height="3" rx="1.5" fill="#ffffff"/><rect x="17.5" y="14" width="3" height="12" rx="1.5" fill="#ffffff"/></g>
+      <g transform="translate(72,150)"><rect width="40" height="40" rx="10" fill="#fbbc04"/><rect x="8" y="12" width="24" height="16" rx="3" fill="#ffffff"/></g>
+      <g transform="translate(126,150)"><rect width="40" height="40" rx="10" fill="#ffffff"/><rect x="9" y="13" width="22" height="16" rx="4" fill="#3c4043"/><circle cx="20" cy="21" r="4.5" fill="#8ab4f8"/></g>
+      <g transform="translate(180,150)"><rect width="40" height="40" rx="10" fill="#ffffff"/><path d="M12 10 h16 v20 h-16 z" fill="#ea4335"/><path d="M12 14 h16" stroke="#ffffff" stroke-width="2"/></g>
+      <g transform="translate(234,150)"><rect width="40" height="40" rx="10" fill="#ffffff"/><path d="M20 8 l4 8 9 1 -6.5 6 1.5 9 -8-4.5 -8 4.5 1.5-9 -6.5-6 9-1 z" fill="#34a853"/></g>
+      <g transform="translate(72,204)"><rect width="40" height="40" rx="20" fill="#ffffff"/><circle cx="20" cy="20" r="12" fill="none" stroke="#34a853" stroke-width="4" stroke-dasharray="6 4"/></g>
+      <g transform="translate(126,204)"><rect width="40" height="40" rx="10" fill="#e8710a"/><circle cx="20" cy="20" r="11" fill="#ffffff"/><path d="M14 20 h12 M20 14 v12" stroke="#e8710a" stroke-width="3"/></g>
+      <g transform="translate(180,204)"><rect width="40" height="40" rx="20" fill="#ffffff"/><path d="M8 24 c6-10 18-10 24 0" fill="none" stroke="#1a73e8" stroke-width="4"/></g>
+      <g transform="translate(234,204)"><rect width="40" height="40" rx="20" fill="#ffffff"/><circle cx="20" cy="20" r="11" fill="none" stroke="#3c4043" stroke-width="4"/></g>
+      <g transform="translate(72,258)"><rect width="40" height="40" rx="10" fill="#ffffff"/><circle cx="20" cy="20" r="12" fill="#a142f4"/></g>
+      <g transform="translate(126,258)"><rect width="40" height="40" rx="10" fill="#d93025"/><path d="M13 20 l10-6 v12 z" fill="#ffffff"/></g>
+      <g transform="translate(180,258)"><rect width="40" height="40" rx="10" fill="#ffffff"/><rect x="10" y="10" width="20" height="20" rx="5" fill="#f5388c"/><circle cx="20" cy="20" r="5" fill="#ffffff"/></g>
+      <g transform="translate(234,258)"><rect width="40" height="40" rx="10" fill="#ffffff"/><circle cx="20" cy="20" r="12" fill="#12b5cb"/></g>
+    </g>
+    <circle cx="165" cy="296" r="3" fill="#3c4043"/>
+    <text x="310" y="120" font-size="12.5" fill="#6b7a99">· 圆角卡片、半透明浅灰底</text>
+    <text x="310" y="144" font-size="12.5" fill="#6b7a99">· 4 列图标网格（无文字标签）</text>
+    <text x="310" y="168" font-size="12.5" fill="#6b7a99">· 底部页点（可翻页，二期再做）</text>
+    <text x="310" y="196" font-size="12" fill="#2e7d57">✓ 环形按钮此刻已消失</text>
+    <text x="310" y="220" font-size="12" fill="#2e7d57">✓ 菜单可触摸</text>
+    <text x="20" y="322" font-size="12" fill="#8a97b3">参考样式 image#2（HyperOS 分享面板网格）</text>
+  </g>
+
+  <!-- Step 3 -->
+  <g transform="translate(34,710)">
+    <rect width="612" height="240" rx="16" fill="#ffffff" stroke="#d7deec"/>
+    <text x="20" y="30" font-size="15" font-weight="700" fill="#2b3a5b">③ 收尾：两种出口</text>
+    <text x="20" y="54" font-size="12.5" fill="#6b7a99">· 点网格中某个图标 → 直接拉起该 App 分享（跳转）。</text>
+    <text x="20" y="78" font-size="12.5" fill="#6b7a99">· 点菜单外任意空白 → 菜单消失（回到长按前状态）。</text>
+    <rect x="40" y="96" width="250" height="120" rx="22" fill="#e9eaec" opacity="0.96"/>
+    <g transform="translate(72,120)"><rect width="40" height="40" rx="20" fill="#3478f6"/><circle cx="20" cy="20" r="9" fill="#ffffff"/></g>
+    <g transform="translate(126,120)"><rect width="40" height="40" rx="20" fill="#34a853"/><circle cx="20" cy="20" r="11" fill="#ffffff"/><rect x="14" y="17" width="12" height="3" rx="1.5" fill="#34a853"/><rect x="17.5" y="14" width="3" height="12" rx="1.5" fill="#34a853"/></g>
+    <g transform="translate(180,120)"><rect width="40" height="40" rx="20" fill="#ea4335"/><path d="M13 20 l10-6 v12 z" fill="#ffffff"/></g>
+    <circle cx="330" cy="140" r="4" fill="#ea4335"/>
+    <text x="344" y="145" font-size="12.5" fill="#c5221f">点图标 → 跳转分享</text>
+    <circle cx="330" cy="185" r="4" fill="#3c4043"/>
+    <text x="344" y="190" font-size="12.5" fill="#3c4043">点空白 → 菜单消失</text>
+    <text x="20" y="230" font-size="12" fill="#2e7d57">✓ 两种出口都会把按钮/菜单/悬浮窗全部清理干净</text>
+  </g>
+</svg>
